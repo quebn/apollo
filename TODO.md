@@ -1,0 +1,12 @@
+Apollo should be able to do these things:
+- [ ] Music Player
+  - [ ] accept file, directory, or title to play music.
+  - [ ] run apollo as a daemon by default.
+  - [ ] print the current playing/loaded song.
+  - [ ] kill the program daemon if there is one.
+  - [ ] next and prev for the song.
+  - [ ] pause and resume.
+  - [ ] stop without killing the program.
+  - [ ] print all the songs of the current playlist.
+- [ ] create an routes for calling the functions above except killing the program.
+- [ ] serve music files via http
