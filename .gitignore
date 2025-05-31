@@ -1,2 +1,8 @@
 public/
 build/
+another/
+
+*.ogg
+*.mp4
+*.flac
+*.mp3

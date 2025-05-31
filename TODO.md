@@ -1,6 +1,6 @@
 Apollo should be able to do these things:
 - [ ] Music Player
-  - [ ] accept file, directory, or title to play music.
+  - [x] accept file, directory, or title to play music.
   - [ ] run apollo as a daemon by default.
   - [ ] print the current playing/loaded song.
   - [ ] kill the program daemon if there is one.
