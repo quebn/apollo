@@ -1,12 +1,15 @@
 Apollo should be able to do these things:
 - [ ] Music Player
   - [x] accept file, directory, or title to play music.
-  - [ ] run apollo as a daemon by default.
-  - [ ] print the current playing/loaded song.
-  - [ ] kill the program daemon if there is one.
-  - [ ] next and prev for the song.
-  - [ ] pause and resume.
-  - [ ] stop without killing the program.
-  - [ ] print all the songs of the current playlist.
-- [ ] create an routes for calling the functions above except killing the program.
-- [ ] serve music files via http
+  - [ ] autoplay the next song in the playlist and print the title.
+  - [ ] introduce keybinds(?) to control the music player within the command line.
+  - [ ] introduce persitent data like: playlist, music lists, data of the last play song/playlist.
+- [ ] Make it a semi HTTP server and use REST to make control and serve its music to others over the network.
+- [ ] Convert Apollo to a daemon which make it that calling the program again with commands invoke the ff. action to the daemon.
+  - [ ] `start`: start the daemon explicitly.
+  - [ ] `kill`: kills the program daemon if there is one.
+  - [ ] `next`: plays the next song in the playlist.
+  - [ ] `prev`: plays the previous song in the playlist.
+  - [ ] `toggle`: pause or resume the current song.
+  - [ ] `stop`: stops to current song.
+  - [ ] `list`: lists all the song of the current playlist.

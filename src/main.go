@@ -124,6 +124,7 @@ func parse_args(args []string, cmd *string) string {
 		if err != nil {
 			os.Exit(1)
 		}
+	// TODO: remove this if can make the program like act like daemon.
 	case "toggle", "next", "prev", "stop", "list":
 		*cmd = arg
 	case "help":
