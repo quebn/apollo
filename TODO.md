@@ -1,7 +1,7 @@
 Apollo should be able to do these things:
 - [ ] Music Player
   - [x] accept file, directory, or title to play music.
-  - [ ] autoplay the next song in the playlist and print the title.
+  - [x] autoplay the next song in the playlist and print the title.
   - [ ] introduce keybinds(?) to control the music player within the command line.
   - [ ] introduce persitent data like: playlist, music lists, data of the last play song/playlist.
 - [ ] Make it a semi HTTP server and use REST to make control and serve its music to others over the network.

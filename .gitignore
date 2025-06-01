@@ -1,8 +1,11 @@
 public/
 build/
 another/
+test/
 
 *.ogg
 *.mp4
 *.flac
 *.mp3
+test.*
+test*

@@ -15,18 +15,54 @@ import (
 	"github.com/gopxl/beep/vorbis"
 )
 
-var playlist = []string{} // current playlist
 var music_dir = "./public"
+var current = 0
+var loop = true
 
 func main() {
 	cmd := "start"
-	path := parse_args(os.Args, &cmd)
+	playlist := parse_args(os.Args, &cmd)
 	switch cmd {
 	case "play":
-		fallthrough
-	case "start":
-		start(path)
+		play(playlist)
+	// case "start":
 	}
+}
+
+func play(playlist []string) {
+	for current < len(playlist) {
+		file_path := playlist[current]
+
+		file, err := os.Open(file_path)
+		if err != nil {
+			fmt.Printf("Failed to open ogg file %s\n", file_path)
+			os.Exit(2)
+		}
+		defer file.Close()
+
+		streamer, format, err := vorbis.Decode(file)
+		if err != nil {
+			fmt.Printf("Failed to decode %s\n", file_path)
+			os.Exit(2)
+		}
+		defer streamer.Close()
+
+		fmt.Printf("Now Playing: %s\n", file_path)
+		play_song(streamer, format)
+		current++
+		if loop && len(playlist) == current {
+			current = 0
+		}
+	}
+}
+
+func play_song(s beep.StreamSeekCloser, format beep.Format) {
+	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
+	done := make(chan bool)
+	speaker.Play(beep.Seq(s, beep.Callback(func(){
+		done <- true
+	})))
+	<- done
 }
 
 func start(path string) {
@@ -76,40 +112,44 @@ func extract_arg(args []string) (string, error){
 }
 
 
-func try_getpath(path_name string) (string, error) {
-	// formats := []string{".ogg"}
-	file, err := os.Stat(path_name)
+func try_getpath(name string) ([]string, error) {
+	files := []string{}
+	file, err := os.Stat(name)
 	if err == nil && !file.IsDir() {
-		fmt.Printf("Found file %s\n", path_name)
-		return path_name, nil
+		files = append(files, name)
+		fmt.Printf("Found file %s\n", name)
+		return files, nil
 	} else if file.IsDir() {
-		dirfs := os.DirFS(strings.TrimRight(path_name, "/"))
-		// TODO: support other formats
+		dirfs := os.DirFS(strings.TrimRight(name, "/"))
+		// TODO: support other formats (mp3, wav, and etc..)
 		songs, err := fs.Glob(dirfs, "*.ogg")
 		if err == nil && len(songs) > 0 {
-			return fmt.Sprintf("%s/%s", path_name, songs[0]), nil
+			for _, song := range songs {
+				files = append(files, fmt.Sprintf("%s/%s", name, song))
+			}
+			return files, nil
 		}
 	}
 	// TODO: make this option use the database the get the name of the file and
 	// get its loc where the location is the primary key
 	dirfs := os.DirFS(music_dir)
-	files, err := fs.Glob(dirfs, fmt.Sprintf("%s.ogg", path_name))
-	// TODO: support other formats (mp3, wav)
+	files, err = fs.Glob(dirfs, fmt.Sprintf("%s.ogg", name))
+	// TODO: support other formats (mp3, wav, and etc..)
 	if err != nil || files == nil {
-		fmt.Printf("No file with name of %s found!\n", path_name)
-		return "", errors.New("File with name of %s does not exist!\n")
+		fmt.Printf("No file with name of %s found!\n", name)
+		return files, errors.New("File with name of %s does not exist!\n")
 	}
-	return fmt.Sprintf("%s/%s", music_dir, files[0]), nil
+	return files, nil
 }
 
-func parse_args(args []string, cmd *string) string {
+func parse_args(args []string, cmd *string) []string {
 	args = slices.Delete(args, 0, 1)
 	arg, err := extract_arg(args)
 	// TODO: should be fetch from a persistent data where the value is the last
 	// song played for now it is hardcoded to this song
-	path := "./public/Lofi Girl - Snowman.ogg"
+	files := []string{"./public/Lofi Girl - Snowman.ogg"}
 	if err != nil {
-		return path
+		return files
 	}
 	switch arg {
 	case "play":
@@ -120,7 +160,7 @@ func parse_args(args []string, cmd *string) string {
 			fmt.Fprint(os.Stderr ,msg)
 			os.Exit(1)
 		}
-		path, err = try_getpath(arg)
+		files, err = try_getpath(arg)
 		if err != nil {
 			os.Exit(1)
 		}
@@ -131,12 +171,12 @@ func parse_args(args []string, cmd *string) string {
 		fmt.Print("TODO: add help\n")
 		os.Exit(0)
 	default:
-		path, err = try_getpath(arg)
+		files, err = try_getpath(arg)
 		if err != nil {
 			msg := "ERROR: %s is not a valid song or command\nUSAGE: apollo [COMMAND] [FILEPATH | DIRPATH | TITLE] or apollo [FILEPATH | DIRPATH | TITLE]\n"
 			fmt.Fprintf(os.Stderr ,msg, arg)
 			os.Exit(1)
 		}
 	}
-	return path
+	return files
 }
