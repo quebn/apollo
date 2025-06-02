@@ -2,10 +2,11 @@ Apollo should be able to do these things:
 - [ ] Music Player
   - [x] accept file, directory, or title to play music.
   - [x] autoplay the next song in the playlist and print the title.
-  - [ ] introduce keybinds(?) to control the music player within the command line.
+  - [x] daemonize the program
+  - [ ] use rpc for a server client like functionality for local control (NOTE: not implementing grpc because i only want the control to be local).
   - [ ] introduce persitent data like: playlist, music lists, data of the last play song/playlist.
 - [ ] Make it a semi HTTP server and use REST to make control and serve its music to others over the network.
-- [ ] Convert Apollo to a daemon which make it that calling the program again with commands invoke the ff. action to the daemon.
+- [ ] Implement on the for apollo daemon
   - [ ] `start`: start the daemon explicitly.
   - [ ] `kill`: kills the program daemon if there is one.
   - [ ] `next`: plays the next song in the playlist.
