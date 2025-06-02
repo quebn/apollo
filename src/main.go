@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	// "net/rpc"
 	"os"
 	"slices"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/gopxl/beep"
 	"github.com/gopxl/beep/speaker"
 	"github.com/gopxl/beep/vorbis"
+	"github.com/sevlyar/go-daemon"
 )
 
 var music_dir = "./public"
@@ -20,13 +22,29 @@ var current = 0
 var loop = true
 
 func main() {
-	cmd := "start"
-	playlist := parse_args(os.Args, &cmd)
-	switch cmd {
-	case "play":
-		play(playlist)
-	// case "start":
+	context := &daemon.Context{
+		PidFileName: "/tmp/apollo.pid",
+		PidFilePerm: 0644,
+		LogFileName: "/tmp/apollo.log",
+		LogFilePerm: 0640,
+		WorkDir:     "./",
+		Umask:       027,
 	}
+
+	process, err := context.Reborn()
+	if err != nil {
+		fmt.Printf("Daemon already started....\n")
+		fmt.Printf("TODO: implement control here\n")
+		os.Exit(0)
+	}
+	if process != nil {
+		fmt.Printf("Starting Apollo...\n")
+		return
+	}
+
+	defer context.Release()
+	fmt.Printf("Apollo Started!\n")
+	start()
 }
 
 func play(playlist []string) {
@@ -65,29 +83,14 @@ func play_song(s beep.StreamSeekCloser, format beep.Format) {
 	<- done
 }
 
-func start(path string) {
-	file, err := os.Open(path)
-	if err != nil {
-		fmt.Printf("Failed to open ogg file %s\n", path)
-		os.Exit(2)
+func start() {
+	cmd := "start"
+	playlist := parse_args(os.Args, &cmd)
+	switch cmd {
+	case "play":
+		play(playlist)
+	default:
 	}
-	defer file.Close()
-
-	streamer, format, err := vorbis.Decode(file)
-	if err != nil {
-		fmt.Printf("Failed to decode %s\n", path)
-		os.Exit(2)
-	}
-	defer streamer.Close()
-
-	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
-	fmt.Printf("Playing: %s\n", path)
-
-	done := make(chan bool)
-	speaker.Play(beep.Seq(streamer, beep.Callback(func(){
-		done <- true
-	})))
-	<- done
 }
 
 func musicHandler(w http.ResponseWriter, r *http.Request) {

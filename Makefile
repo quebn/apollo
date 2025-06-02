@@ -7,11 +7,8 @@ dir: compile
 file: compile
 	./build/apollo play "./public/Lofi Girl - Snowman.ogg"
 
-run:
-	./build/apollo
-
-rebuild: compile
-	./build/apollo "Lofi Girl - Snowmans" foo bar
+run: compile
+	./build/apollo play "public"
 
 compile:
 	go build -o build/apollo src/main.go
