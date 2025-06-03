@@ -4,8 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
-	// "net/rpc"
+	"net/rpc"
 	"os"
 	"slices"
 	"strings"
@@ -20,9 +21,21 @@ import (
 var music_dir = "./public"
 var current = 0
 var loop = true
+var network = "tcp"
+var rpc_port = ":42069"
+var context *daemon.Context
+var playlist []string
+var playing bool
+
+type Apollo struct{}
 
 func main() {
-	context := &daemon.Context{
+	cmd := parse_args(os.Args)
+	if (cmd != "start") {
+		handle_daemon(cmd)
+		return
+	}
+	context = &daemon.Context{
 		PidFileName: "/tmp/apollo.pid",
 		PidFilePerm: 0644,
 		LogFileName: "/tmp/apollo.log",
@@ -30,12 +43,9 @@ func main() {
 		WorkDir:     "./",
 		Umask:       027,
 	}
-
 	process, err := context.Reborn()
 	if err != nil {
-		fmt.Printf("Daemon already started....\n")
-		fmt.Printf("TODO: implement control here\n")
-		os.Exit(0)
+		return
 	}
 	if process != nil {
 		fmt.Printf("Starting Apollo...\n")
@@ -43,11 +53,81 @@ func main() {
 	}
 
 	defer context.Release()
-	fmt.Printf("Apollo Started!\n")
-	start()
+	start_rpc()
+	// start_musicplayer()
+	// start_http()
 }
 
-func play(playlist []string) {
+func handle_daemon(cmd string) {
+	client, err := rpc.Dial(network, rpc_port)
+	if err != nil {
+		fmt.Printf("Apollo daemon is not active...\n")
+		return
+	}
+	switch cmd {
+	case "play":
+		fmt.Printf("Playing Song...\n")
+		var reply string
+		err = client.Call("Apollo.Play", "", &reply)
+		if err != nil {
+			return
+		}
+		fmt.Printf("Apollo: %s\n", reply)
+	case "kill":
+		fmt.Printf("Killing Apollo...\n")
+		var reply string
+		err = client.Call("Apollo.Kill", "", &reply)
+		if err != nil {
+			return
+		}
+		fmt.Printf("Apollo Daemon replied with: %s\n", reply)
+	default:
+		fmt.Printf("No Handles implemented for command: %s\n", cmd)
+	}
+}
+
+func (a *Apollo) Kill(args string, reply *string) error {
+	context.Release()
+	os.Exit(0)
+	return nil
+}
+
+func (a *Apollo) Play(args string, reply *string) error {
+	if !playing {
+		*reply = "Song is Playing...."
+		go play_music()
+	} else {
+		*reply = "Already Playing song...."
+	}
+	return nil
+}
+
+func start_rpc() {
+	rpc.Register(new(Apollo))
+	listener, err := net.Listen(network, rpc_port)
+	if err != nil {
+		fmt.Printf("ERROR listening to tcp with error of:%v\n", err)
+		return
+	}
+	fmt.Printf("Apollo Started!\n")
+	for {
+		conn, err:= listener.Accept()
+		if err != nil {
+			continue
+		}
+		go rpc.ServeConn(conn)
+	}
+}
+
+func play_music() {
+	if len(playlist) == 0 {
+		songs, err := try_getpath(music_dir)
+		if err != nil {
+			return
+		}
+		playlist = songs
+	}
+	playing = true
 	for current < len(playlist) {
 		file_path := playlist[current]
 
@@ -72,6 +152,7 @@ func play(playlist []string) {
 			current = 0
 		}
 	}
+	playing = false
 }
 
 func play_song(s beep.StreamSeekCloser, format beep.Format) {
@@ -81,16 +162,6 @@ func play_song(s beep.StreamSeekCloser, format beep.Format) {
 		done <- true
 	})))
 	<- done
-}
-
-func start() {
-	cmd := "start"
-	playlist := parse_args(os.Args, &cmd)
-	switch cmd {
-	case "play":
-		play(playlist)
-	default:
-	}
 }
 
 func musicHandler(w http.ResponseWriter, r *http.Request) {
@@ -145,41 +216,25 @@ func try_getpath(name string) ([]string, error) {
 	return files, nil
 }
 
-func parse_args(args []string, cmd *string) []string {
+func parse_args(args []string) string{
 	args = slices.Delete(args, 0, 1)
 	arg, err := extract_arg(args)
-	// TODO: should be fetch from a persistent data where the value is the last
-	// song played for now it is hardcoded to this song
-	files := []string{"./public/Lofi Girl - Snowman.ogg"}
 	if err != nil {
-		return files
+		return "start"
 	}
 	switch arg {
-	case "play":
-		*cmd = arg
-		arg, err = extract_arg(args)
-		if err != nil {
-			msg := "No music to play\nUSAGE: apollo play [FILEPATH | DIRPATH | TITLE]\n"
-			fmt.Fprint(os.Stderr ,msg)
-			os.Exit(1)
-		}
-		files, err = try_getpath(arg)
-		if err != nil {
-			os.Exit(1)
-		}
-	// TODO: remove this if can make the program like act like daemon.
-	case "toggle", "next", "prev", "stop", "list":
-		*cmd = arg
+	case "play", "toggle", "next", "prev", "stop", "list", "kill":
+		return arg
 	case "help":
-		fmt.Print("TODO: add help\n")
+		fmt.Print("NOT IMPLEMENTED\n")
 		os.Exit(0)
 	default:
-		files, err = try_getpath(arg)
+		playlist, err = try_getpath(arg)
 		if err != nil {
-			msg := "ERROR: %s is not a valid song or command\nUSAGE: apollo [COMMAND] [FILEPATH | DIRPATH | TITLE] or apollo [FILEPATH | DIRPATH | TITLE]\n"
-			fmt.Fprintf(os.Stderr ,msg, arg)
+			fmt.Fprintf(os.Stderr ,"ERROR: %s is not a valid song argument or command\n", arg)
+			fmt.Fprintf(os.Stderr ,"USAGE: apollo [COMMAND | FILEPATH | DIRPATH | TITLE] \n")
 			os.Exit(1)
 		}
 	}
-	return files
+	return "start"
 }

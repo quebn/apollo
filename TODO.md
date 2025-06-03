@@ -7,7 +7,8 @@ Apollo should be able to do these things:
   - [ ] introduce persitent data like: playlist, music lists, data of the last play song/playlist.
 - [ ] Make it a semi HTTP server and use REST to make control and serve its music to others over the network.
 - [ ] Implement on the for apollo daemon
-  - [ ] `start`: start the daemon explicitly.
+  - [ ] `[FILEPATH|DIRPATH|TITLE]`: start daemon if not started and play the song(s) depending on the arguments.
+  - [ ] `play`: start playing the current song.
   - [ ] `kill`: kills the program daemon if there is one.
   - [ ] `next`: plays the next song in the playlist.
   - [ ] `prev`: plays the previous song in the playlist.

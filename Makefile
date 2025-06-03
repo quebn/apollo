@@ -1,14 +1,14 @@
 title: compile
-	./build/apollo play "Lofi Girl - Snowman"
+	./build/apollo "Lofi Girl - Snowman"
 
 dir: compile
-	./build/apollo play "./another"
+	./build/apollo "./another"
 
 file: compile
-	./build/apollo play "./public/Lofi Girl - Snowman.ogg"
+	./build/apollo "./public/Lofi Girl - Snowman.ogg"
 
 run: compile
-	./build/apollo play "public"
+	./build/apollo
 
 compile:
 	go build -o build/apollo src/main.go
