@@ -227,6 +227,9 @@ func try_getpath(name string) ([]string, error) {
 }
 
 func parse_args() string{
+	if len(os.Args) == 1 {
+		return "start"
+	}
 	arg := os.Args[1]
 	switch arg {
 	case "play", "toggle", "next", "prev", "stop", "list", "kill":
