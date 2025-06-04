@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"io/fs"
 	"net"
-	"net/http"
 	"net/rpc"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
@@ -30,7 +28,7 @@ var playing bool
 type Apollo struct{}
 
 func main() {
-	cmd := parse_args(os.Args)
+	cmd := parse_args()
 	if (cmd != "start") {
 		handle_daemon(cmd)
 		return
@@ -47,6 +45,7 @@ func main() {
 	if err != nil {
 		return
 	}
+
 	if process != nil {
 		fmt.Printf("Starting Apollo...\n")
 		return
@@ -64,26 +63,25 @@ func handle_daemon(cmd string) {
 		fmt.Printf("Apollo daemon is not active...\n")
 		return
 	}
+
+	var reply string
 	switch cmd {
 	case "play":
-		fmt.Printf("Playing Song...\n")
-		var reply string
 		err = client.Call("Apollo.Play", "", &reply)
-		if err != nil {
-			return
-		}
-		fmt.Printf("Apollo: %s\n", reply)
+	case "toggle":
+		err = client.Call("Apollo.Toggle", "", &reply)
 	case "kill":
-		fmt.Printf("Killing Apollo...\n")
-		var reply string
 		err = client.Call("Apollo.Kill", "", &reply)
-		if err != nil {
-			return
-		}
-		fmt.Printf("Apollo Daemon replied with: %s\n", reply)
 	default:
 		fmt.Printf("No Handles implemented for command: %s\n", cmd)
+		return
 	}
+
+	fmt.Printf("Playing Song...\n")
+	if err != nil {
+		return
+	}
+	fmt.Printf("Apollo: %s\n", reply)
 }
 
 func (a *Apollo) Kill(args string, reply *string) error {
@@ -102,6 +100,17 @@ func (a *Apollo) Play(args string, reply *string) error {
 	return nil
 }
 
+func (a *Apollo) Toggle(args string, reply *string) error {
+	if playing {
+		*reply = "Song Toggled!"
+		toggle <- true
+		return nil
+	}
+	*reply = "No Song Playing..."
+	return nil
+}
+
+
 func start_rpc() {
 	rpc.Register(new(Apollo))
 	listener, err := net.Listen(network, rpc_port)
@@ -119,6 +128,7 @@ func start_rpc() {
 	}
 }
 
+// TODO: support other formats
 func play_music() {
 	if len(playlist) == 0 {
 		songs, err := try_getpath(music_dir)
@@ -155,50 +165,49 @@ func play_music() {
 	playing = false
 }
 
+var toggle = make(chan bool)
 func play_song(s beep.StreamSeekCloser, format beep.Format) {
 	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
+
+	ctrl := &beep.Ctrl{Streamer: beep.Loop(1, s), Paused: false}
+
+	// speaker.Play(ctrl)
 	done := make(chan bool)
-	speaker.Play(beep.Seq(s, beep.Callback(func(){
+	speaker.Play(beep.Seq(ctrl, beep.Callback(func(){
 		done <- true
 	})))
-	<- done
-}
-
-func musicHandler(w http.ResponseWriter, r *http.Request) {
-    name := strings.TrimPrefix(r.URL.Path, "/musics/")
-	file_path := fmt.Sprintf("%s/%s.ogg", music_dir, name)
-	_, err := os.Stat(file_path)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("File:'%s' does not Exist -> %s\n", name, r.URL.Path), 500)
-		return
+	// <- done
+	for {
+		select {
+		case <-done:
+			return
+		case <-toggle:
+			speaker.Lock()
+			ctrl.Paused = !ctrl.Paused
+			speaker.Unlock()
+		}
 	}
-	fmt.Printf("Playing %s\n", file_path)
-	http.ServeFile(w, r, file_path)
 }
-
-func extract_arg(args []string) (string, error){
-	if len(args) == 0 {
-		return "", errors.New("No arguments specified")
-	}
-	arg := args[0]
-	args = slices.Delete(args, 0, 1)
-	return arg, nil
-}
-
 
 func try_getpath(name string) ([]string, error) {
 	files := []string{}
 	file, err := os.Stat(name)
-	if err == nil && !file.IsDir() {
+	if err != nil {
+		return files, err
+	}
+	fmt.Printf("Checking if dir or file: %s.\n", name)
+	if !file.IsDir() {
 		files = append(files, name)
 		fmt.Printf("Found file %s\n", name)
 		return files, nil
-	} else if file.IsDir() {
+	} else {
 		dirfs := os.DirFS(strings.TrimRight(name, "/"))
 		// TODO: support other formats (mp3, wav, and etc..)
 		songs, err := fs.Glob(dirfs, "*.ogg")
 		if err == nil && len(songs) > 0 {
+			fmt.Printf("Found dir %s\n", name)
 			for _, song := range songs {
+				fmt.Printf("Adding to files: %s\n", fmt.Sprintf("%s/%s", name, song))
 				files = append(files, fmt.Sprintf("%s/%s", name, song))
 			}
 			return files, nil
@@ -206,6 +215,7 @@ func try_getpath(name string) ([]string, error) {
 	}
 	// TODO: make this option use the database the get the name of the file and
 	// get its loc where the location is the primary key
+	fmt.Printf("Checking if title\n")
 	dirfs := os.DirFS(music_dir)
 	files, err = fs.Glob(dirfs, fmt.Sprintf("%s.ogg", name))
 	// TODO: support other formats (mp3, wav, and etc..)
@@ -216,12 +226,8 @@ func try_getpath(name string) ([]string, error) {
 	return files, nil
 }
 
-func parse_args(args []string) string{
-	args = slices.Delete(args, 0, 1)
-	arg, err := extract_arg(args)
-	if err != nil {
-		return "start"
-	}
+func parse_args() string{
+	arg := os.Args[1]
 	switch arg {
 	case "play", "toggle", "next", "prev", "stop", "list", "kill":
 		return arg
@@ -229,12 +235,13 @@ func parse_args(args []string) string{
 		fmt.Print("NOT IMPLEMENTED\n")
 		os.Exit(0)
 	default:
-		playlist, err = try_getpath(arg)
+		list, err := try_getpath(arg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr ,"ERROR: %s is not a valid song argument or command\n", arg)
 			fmt.Fprintf(os.Stderr ,"USAGE: apollo [COMMAND | FILEPATH | DIRPATH | TITLE] \n")
 			os.Exit(1)
 		}
+		playlist = list
 	}
 	return "start"
 }
