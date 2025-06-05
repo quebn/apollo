@@ -12,6 +12,6 @@ Apollo should be able to do these things:
     - [x] `toggle`: pause or resume the current song.
     - [ ] `stop`: stops to current song.
     - [ ] `list`: lists all the song of the current playlist.
-    - [ ] `vol`: raises or lowers the volume followed by the value ex: `apollo vol +[VALUE]` or `apollo vol -[VALUE]`.
+    - [x] `vol`: raises or lowers the volume followed by the value ex: `apollo vol [VALUE]` or `apollo vol [VALUE]`.
   - [ ] introduce persitent data like: playlist, music lists, data of the last play song/playlist.
 - [ ] Make it a semi HTTP server and use REST to make control and serve its music to others over the network.
