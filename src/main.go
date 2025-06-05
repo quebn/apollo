@@ -9,8 +9,10 @@ import (
 	"os"
 	"strings"
 	"time"
+	"strconv"
 
 	"github.com/gopxl/beep"
+	"github.com/gopxl/beep/effects"
 	"github.com/gopxl/beep/speaker"
 	"github.com/gopxl/beep/vorbis"
 	"github.com/sevlyar/go-daemon"
@@ -23,6 +25,7 @@ type MusicManager struct {
 	current int
 	music_dir string
 	toggle chan bool
+	volume chan float64
 }
 
 type Daemon struct {
@@ -33,11 +36,11 @@ type Daemon struct {
 
 
 func main() {
-	cmd, playlist := parse_args()
+	cmd, args := parse_args()
 
 	dmon := Daemon{ network: "tcp", rpc_port: ":42069" }
 	if (cmd != "start") {
-		handle_daemon(&dmon, cmd, playlist)
+		handle_daemon(&dmon, cmd, args)
 		return
 	}
 	dmon.context = &daemon.Context {
@@ -59,20 +62,27 @@ func main() {
 	}
 
 	defer dmon.context.Release()
+	playlist := []string{}
+	if args != nil || len(args) > 0 {
+		for _, v := range args {
+			playlist = append(playlist, v.(string))
+		}
+	}
 	manager := MusicManager{
-		playlist: []string{},
+		playlist: playlist,
 		loop: true,
 		current: 0,
 		playing: false,
 		music_dir: "./public",
 		toggle: make(chan bool),
+		volume: make(chan float64),
 	}
 	start_rpc(&dmon, &manager)
 	// start_musicplayer()
 	// start_http()
 }
 
-func handle_daemon(d *Daemon, cmd string, _ []string) {
+func handle_daemon(d *Daemon, cmd string, args []any) {
 	client, err := rpc.Dial(d.network, d.rpc_port)
 	if err != nil {
 		fmt.Printf("Apollo daemon is not active...\n")
@@ -88,6 +98,9 @@ func handle_daemon(d *Daemon, cmd string, _ []string) {
 		err = client.Call("MusicManager.Toggle", "", &reply)
 	case "kill":
 		err = client.Call("Daemon.Kill", "", &reply)
+	case "vol":
+		value := args[0].(float64)
+		err = client.Call("MusicManager.Volume", value, &reply)
 	default:
 		fmt.Printf("No Handles implemented for command: %s\n", cmd)
 		return
@@ -118,7 +131,17 @@ func (m *MusicManager) Play(args string, reply *string) error {
 func (m *MusicManager) Toggle(args string, reply *string) error {
 	if m.playing {
 		*reply = "Song Toggled!"
-		m.toggle <- true
+		m.toggle <-true
+		return nil
+	}
+	*reply = "No Song Playing..."
+	return nil
+}
+
+func (m *MusicManager) Volume(args float64, reply *string) error {
+	if m.playing {
+		*reply = fmt.Sprintf("Setting volume to %g\n", args)
+		m.volume <-args
 		return nil
 	}
 	*reply = "No Song Playing..."
@@ -158,15 +181,15 @@ func (m *MusicManager) play_playlist() {
 
 		file, err := os.Open(file_path)
 		if err != nil {
-			fmt.Printf("Failed to open ogg file %s\n", file_path)
-			os.Exit(2)
+			fmt.Printf("Failed to open file %s: not a valid format\n", file_path)
+			panic(err)
 		}
 		defer file.Close()
 
 		streamer, format, err := vorbis.Decode(file)
 		if err != nil {
-			fmt.Printf("Failed to decode %s\n", file_path)
-			os.Exit(2)
+			fmt.Printf("Failed to decode file %s: not a valid format\n", file_path)
+			panic(err)
 		}
 		defer streamer.Close()
 
@@ -184,10 +207,16 @@ func (m *MusicManager) play_song(s beep.StreamSeekCloser, format beep.Format) {
 	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
 
 	ctrl := &beep.Ctrl{Streamer: beep.Loop(1, s), Paused: false}
+	vol := &effects.Volume{
+		Streamer: ctrl,
+		Base: 2,
+		Volume: 0,
+		Silent: false,
+	}
 
 	done := make(chan bool)
-	speaker.Play(beep.Seq(ctrl, beep.Callback(func(){
-		done <- true
+	speaker.Play(beep.Seq(vol, beep.Callback(func(){
+		done <-true
 	})))
 	for {
 		select {
@@ -196,6 +225,10 @@ func (m *MusicManager) play_song(s beep.StreamSeekCloser, format beep.Format) {
 		case <-m.toggle:
 			speaker.Lock()
 			ctrl.Paused = !ctrl.Paused
+			speaker.Unlock()
+		case volume :=<-m.volume:
+			speaker.Lock()
+			vol.Volume += volume
 			speaker.Unlock()
 		}
 	}
@@ -238,14 +271,32 @@ func try_getpath(name string) ([]string, error) {
 	return files, nil
 }
 
-func parse_args() (cmd string, playlist []string) {
+// playlist should be additional args
+func parse_args() (cmd string, args []any) {
 	if len(os.Args) == 1 {
-		return "start", playlist
+		return "start", args
 	}
 	arg := os.Args[1]
 	switch arg {
 	case "play", "toggle", "next", "prev", "stop", "list", "kill":
-		return arg, playlist
+		return arg, args
+	case "vol":
+		if len(os.Args) < 3 {
+			fmt.Fprintf(os.Stderr ,"ERROR: volume argument value required\n")
+			fmt.Fprintf(os.Stderr ,"USAGE: apollo vol [VALUE] \n")
+			os.Exit(1)
+		}
+		cmd = arg
+		arg = os.Args[2]
+		args = make([]any, 1)
+		var err error
+		args[0], err = strconv.ParseFloat(arg, 64)
+		if err != nil {
+			fmt.Fprintf(os.Stderr ,"ERROR: invalid volume value '%s'\n", arg)
+			fmt.Fprintf(os.Stderr ,"USAGE: apollo vol [VALUE] \n")
+			os.Exit(1)
+		}
+		return cmd, args
 	case "help":
 		fmt.Print("NOT IMPLEMENTED\n")
 		os.Exit(0)
@@ -256,7 +307,10 @@ func parse_args() (cmd string, playlist []string) {
 			fmt.Fprintf(os.Stderr ,"USAGE: apollo [COMMAND | FILEPATH | DIRPATH | TITLE] \n")
 			os.Exit(1)
 		}
-		playlist = list
+		args = make([]any, len(list))
+		for i, v := range list {
+			args[i] = v
+		}
 	}
-	return "start", playlist
+	return "start", args
 }
