@@ -16,24 +16,31 @@ import (
 	"github.com/sevlyar/go-daemon"
 )
 
-var music_dir = "./public"
-var current = 0
-var loop = true
-var network = "tcp"
-var rpc_port = ":42069"
-var context *daemon.Context
-var playlist []string
-var playing bool
+type MusicManager struct {
+	playlist []string
+	loop bool
+	playing bool
+	current int
+	music_dir string
+	toggle chan bool
+}
 
-type Apollo struct{}
+type Daemon struct {
+	context *daemon.Context
+	network string
+	rpc_port string
+}
+
 
 func main() {
-	cmd := parse_args()
+	cmd, playlist := parse_args()
+
+	dmon := Daemon{ network: "tcp", rpc_port: ":42069" }
 	if (cmd != "start") {
-		handle_daemon(cmd)
+		handle_daemon(&dmon, cmd, playlist)
 		return
 	}
-	context = &daemon.Context{
+	dmon.context = &daemon.Context {
 		PidFileName: "/tmp/apollo.pid",
 		PidFilePerm: 0644,
 		LogFileName: "/tmp/apollo.log",
@@ -41,7 +48,7 @@ func main() {
 		WorkDir:     "./",
 		Umask:       027,
 	}
-	process, err := context.Reborn()
+	process, err := dmon.context.Reborn()
 	if err != nil {
 		return
 	}
@@ -51,14 +58,22 @@ func main() {
 		return
 	}
 
-	defer context.Release()
-	start_rpc()
+	defer dmon.context.Release()
+	manager := MusicManager{
+		playlist: []string{},
+		loop: true,
+		current: 0,
+		playing: false,
+		music_dir: "./public",
+		toggle: make(chan bool),
+	}
+	start_rpc(&dmon, &manager)
 	// start_musicplayer()
 	// start_http()
 }
 
-func handle_daemon(cmd string) {
-	client, err := rpc.Dial(network, rpc_port)
+func handle_daemon(d *Daemon, cmd string, _ []string) {
+	client, err := rpc.Dial(d.network, d.rpc_port)
 	if err != nil {
 		fmt.Printf("Apollo daemon is not active...\n")
 		return
@@ -67,43 +82,43 @@ func handle_daemon(cmd string) {
 	var reply string
 	switch cmd {
 	case "play":
-		err = client.Call("Apollo.Play", "", &reply)
+		err = client.Call("MusicManager.Play", "", &reply)
+		fmt.Printf("Playing Song...\n")
 	case "toggle":
-		err = client.Call("Apollo.Toggle", "", &reply)
+		err = client.Call("MusicManager.Toggle", "", &reply)
 	case "kill":
-		err = client.Call("Apollo.Kill", "", &reply)
+		err = client.Call("Daemon.Kill", "", &reply)
 	default:
 		fmt.Printf("No Handles implemented for command: %s\n", cmd)
 		return
 	}
 
-	fmt.Printf("Playing Song...\n")
 	if err != nil {
 		return
 	}
 	fmt.Printf("Apollo: %s\n", reply)
 }
 
-func (a *Apollo) Kill(args string, reply *string) error {
-	context.Release()
+func (d *Daemon) Kill(args string, reply *string) error {
+	d.context.Release()
 	os.Exit(0)
 	return nil
 }
 
-func (a *Apollo) Play(args string, reply *string) error {
-	if !playing {
+func (m *MusicManager) Play(args string, reply *string) error {
+	if !m.playing {
 		*reply = "Song is Playing...."
-		go play_music()
+		go m.play_playlist()
 	} else {
 		*reply = "Already Playing song...."
 	}
 	return nil
 }
 
-func (a *Apollo) Toggle(args string, reply *string) error {
-	if playing {
+func (m *MusicManager) Toggle(args string, reply *string) error {
+	if m.playing {
 		*reply = "Song Toggled!"
-		toggle <- true
+		m.toggle <- true
 		return nil
 	}
 	*reply = "No Song Playing..."
@@ -111,12 +126,12 @@ func (a *Apollo) Toggle(args string, reply *string) error {
 }
 
 
-func start_rpc() {
-	rpc.Register(new(Apollo))
-	listener, err := net.Listen(network, rpc_port)
+func start_rpc(d *Daemon, m *MusicManager) {
+	rpc.RegisterName("MusicManager", m)
+	rpc.RegisterName("Daemon", d)
+	listener, err := net.Listen(d.network, d.rpc_port)
 	if err != nil {
-		fmt.Printf("ERROR listening to tcp with error of:%v\n", err)
-		return
+		panic(err)
 	}
 	fmt.Printf("Apollo Started!\n")
 	for {
@@ -129,17 +144,17 @@ func start_rpc() {
 }
 
 // TODO: support other formats
-func play_music() {
-	if len(playlist) == 0 {
-		songs, err := try_getpath(music_dir)
+func (m *MusicManager) play_playlist() {
+	if len(m.playlist) == 0 {
+		songs, err := try_getpath(m.music_dir)
 		if err != nil {
 			return
 		}
-		playlist = songs
+		m.playlist = songs
 	}
-	playing = true
-	for current < len(playlist) {
-		file_path := playlist[current]
+	m.playing = true
+	for m.current < len(m.playlist) {
+		file_path := m.playlist[m.current]
 
 		file, err := os.Open(file_path)
 		if err != nil {
@@ -156,32 +171,29 @@ func play_music() {
 		defer streamer.Close()
 
 		fmt.Printf("Now Playing: %s\n", file_path)
-		play_song(streamer, format)
-		current++
-		if loop && len(playlist) == current {
-			current = 0
+		m.play_song(streamer, format)
+		m.current++
+		if m.loop && len(m.playlist) == m.current {
+			m.current = 0
 		}
 	}
-	playing = false
+	m.playing = false
 }
 
-var toggle = make(chan bool)
-func play_song(s beep.StreamSeekCloser, format beep.Format) {
+func (m *MusicManager) play_song(s beep.StreamSeekCloser, format beep.Format) {
 	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
 
 	ctrl := &beep.Ctrl{Streamer: beep.Loop(1, s), Paused: false}
 
-	// speaker.Play(ctrl)
 	done := make(chan bool)
 	speaker.Play(beep.Seq(ctrl, beep.Callback(func(){
 		done <- true
 	})))
-	// <- done
 	for {
 		select {
 		case <-done:
 			return
-		case <-toggle:
+		case <-m.toggle:
 			speaker.Lock()
 			ctrl.Paused = !ctrl.Paused
 			speaker.Unlock()
@@ -216,7 +228,7 @@ func try_getpath(name string) ([]string, error) {
 	// TODO: make this option use the database the get the name of the file and
 	// get its loc where the location is the primary key
 	fmt.Printf("Checking if title\n")
-	dirfs := os.DirFS(music_dir)
+	dirfs := os.DirFS("./public")
 	files, err = fs.Glob(dirfs, fmt.Sprintf("%s.ogg", name))
 	// TODO: support other formats (mp3, wav, and etc..)
 	if err != nil || files == nil {
@@ -226,14 +238,14 @@ func try_getpath(name string) ([]string, error) {
 	return files, nil
 }
 
-func parse_args() string{
+func parse_args() (cmd string, playlist []string) {
 	if len(os.Args) == 1 {
-		return "start"
+		return "start", playlist
 	}
 	arg := os.Args[1]
 	switch arg {
 	case "play", "toggle", "next", "prev", "stop", "list", "kill":
-		return arg
+		return arg, playlist
 	case "help":
 		fmt.Print("NOT IMPLEMENTED\n")
 		os.Exit(0)
@@ -246,5 +258,5 @@ func parse_args() string{
 		}
 		playlist = list
 	}
-	return "start"
+	return "start", playlist
 }
