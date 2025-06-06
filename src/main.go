@@ -23,9 +23,12 @@ type MusicManager struct {
 	loop bool
 	playing bool
 	current int
-	music_dir string
+	paused bool
+
+	// channels
 	toggle chan bool
 	volume chan float64
+	done chan bool
 }
 
 type Daemon struct {
@@ -63,56 +66,34 @@ func main() {
 
 	defer dmon.context.Release()
 	playlist := []string{}
+
 	if args != nil || len(args) > 0 {
 		for _, v := range args {
 			playlist = append(playlist, v.(string))
 		}
 	}
+
+	if len(playlist) == 0 {
+		playlist = get_songs_from_dir("./public")
+	}
+
 	manager := MusicManager{
 		playlist: playlist,
 		loop: true,
 		current: 0,
 		playing: false,
-		music_dir: "./public",
 		toggle: make(chan bool),
 		volume: make(chan float64),
+		done: make(chan bool),
 	}
+
 	start_rpc(&dmon, &manager)
 	// start_musicplayer()
 	// start_http()
 }
 
-func handle_daemon(d *Daemon, cmd string, args []any) {
-	client, err := rpc.Dial(d.network, d.rpc_port)
-	if err != nil {
-		fmt.Printf("Apollo daemon is not active...\n")
-		return
-	}
-
-	var reply string
-	switch cmd {
-	case "play":
-		err = client.Call("MusicManager.Play", "", &reply)
-		fmt.Printf("Playing Song...\n")
-	case "toggle":
-		err = client.Call("MusicManager.Toggle", "", &reply)
-	case "kill":
-		err = client.Call("Daemon.Kill", "", &reply)
-	case "vol":
-		value := args[0].(float64)
-		err = client.Call("MusicManager.Volume", value, &reply)
-	default:
-		fmt.Printf("No Handles implemented for command: %s\n", cmd)
-		return
-	}
-
-	if err != nil {
-		return
-	}
-	fmt.Printf("Apollo: %s\n", reply)
-}
-
 func (d *Daemon) Kill(args string, reply *string) error {
+	*reply = "Daemon Killed"
 	d.context.Release()
 	os.Exit(0)
 	return nil
@@ -123,7 +104,75 @@ func (m *MusicManager) Play(args string, reply *string) error {
 		*reply = "Song is Playing...."
 		go m.play_playlist()
 	} else {
+		if m.paused == true {
+			m.toggle <-false
+			*reply = "Already Playing song and unpausing instead...."
+		}
 		*reply = "Already Playing song...."
+	}
+	return nil
+}
+
+func (m *MusicManager) Stop(args string, reply *string) error {
+	if m.playing {
+		m.playing = false
+		m.toggle <-true
+		m.done <-true
+		*reply = fmt.Sprintf("Stopping at index: %d", m.current)
+	} else {
+		*reply = "Apollo is not playing anything..."
+	}
+	return nil
+}
+
+func (m *MusicManager) Previous(args string, reply *string) error {
+	if len(m.playlist) == 0 {
+		return errors.New("No songs in playlist")
+	}
+	if m.current == 0 {
+		m.current = len(m.playlist) - 1
+	} else {
+		m.current--
+	}
+	*reply = fmt.Sprintf("Previous with index: %d\b", m.current)
+	if m.playing {
+		m.playing = false
+		m.toggle <-true
+		m.done <-true
+		go m.play_playlist()
+	}
+	return nil
+
+}
+
+func (m *MusicManager) List(args string, reply *string) error {
+	if len(m.playlist) == 0 {
+		*reply = "No Songs in Playlist"
+	} else {
+		*reply = "Playlist Songs:\n"
+		for i,v := range m.playlist {
+			row := fmt.Sprintf("[%d]: %s\n", i, v)
+			*reply = *reply + row
+		}
+	}
+	return nil
+}
+
+func (m *MusicManager) Next(args string, reply *string) error {
+	if len(m.playlist) == 0 {
+		return errors.New("No songs in playlist")
+	}
+	if m.playing {
+		m.toggle <-true
+		m.done <-true
+		m.toggle <-false
+		*reply = "Going next"
+	} else{
+		m.current++
+		if len(m.playlist) == m.current {
+			m.current = 0
+		}
+		*reply = fmt.Sprintf("Next with index: %d\b", m.current)
 	}
 	return nil
 }
@@ -131,7 +180,7 @@ func (m *MusicManager) Play(args string, reply *string) error {
 func (m *MusicManager) Toggle(args string, reply *string) error {
 	if m.playing {
 		*reply = "Song Toggled!"
-		m.toggle <-true
+		m.toggle <-!m.paused
 		return nil
 	}
 	*reply = "No Song Playing..."
@@ -169,14 +218,13 @@ func start_rpc(d *Daemon, m *MusicManager) {
 // TODO: support other formats
 func (m *MusicManager) play_playlist() {
 	if len(m.playlist) == 0 {
-		songs, err := try_getpath(m.music_dir)
-		if err != nil {
-			return
-		}
-		m.playlist = songs
+		fmt.Printf("No songs in playlist\n")
+		return
 	}
+	m.paused = false
 	m.playing = true
-	for m.current < len(m.playlist) {
+	fmt.Printf("Playlist Playing...!\n")
+	for m.playing && m.current < len(m.playlist) {
 		file_path := m.playlist[m.current]
 
 		file, err := os.Open(file_path)
@@ -195,36 +243,38 @@ func (m *MusicManager) play_playlist() {
 
 		fmt.Printf("Now Playing: %s\n", file_path)
 		m.play_song(streamer, format)
-		m.current++
-		if m.loop && len(m.playlist) == m.current {
-			m.current = 0
+		if m.playing {
+			fmt.Printf("Incrementing current index: %d -> %d\n", m.current, m.current+1)
+			m.current++
+			if m.loop && len(m.playlist) == m.current {
+				m.current = 0
+			}
 		}
 	}
 	m.playing = false
+	fmt.Printf("Playlist stopped!\n")
 }
 
 func (m *MusicManager) play_song(s beep.StreamSeekCloser, format beep.Format) {
 	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
 
-	ctrl := &beep.Ctrl{Streamer: beep.Loop(1, s), Paused: false}
+	ctrl := &beep.Ctrl{Streamer: beep.Loop(1, s), Paused: m.paused}
 	vol := &effects.Volume{
 		Streamer: ctrl,
 		Base: 2,
 		Volume: 0,
 		Silent: false,
 	}
-
-	done := make(chan bool)
 	speaker.Play(beep.Seq(vol, beep.Callback(func(){
-		done <-true
+		m.done <-true
 	})))
 	for {
 		select {
-		case <-done:
+		case <-m.done:
 			return
-		case <-m.toggle:
+		case m.paused =<-m.toggle:
 			speaker.Lock()
-			ctrl.Paused = !ctrl.Paused
+			ctrl.Paused = m.paused
 			speaker.Unlock()
 		case volume :=<-m.volume:
 			speaker.Lock()
@@ -313,4 +363,12 @@ func parse_args() (cmd string, args []any) {
 		}
 	}
 	return "start", args
+}
+
+func get_songs_from_dir(dir string) []string {
+	songs, err := try_getpath(dir)
+	if err != nil {
+		panic(err)
+	}
+	return songs
 }

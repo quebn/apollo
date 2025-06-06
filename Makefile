@@ -11,7 +11,7 @@ run: compile
 	./build/apollo
 
 compile:
-	go build -o build/apollo src/main.go
+	go build -o build/apollo src/main.go src/client.go
 
 testes: compile
 	./build/apollo another

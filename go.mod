@@ -5,7 +5,6 @@ go 1.24.3
 require (
 	github.com/gopxl/beep v1.4.1
 	github.com/sevlyar/go-daemon v0.1.6
-	golang.org/x/term v0.5.0
 )
 
 require (
