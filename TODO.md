@@ -1,3 +1,4 @@
+# TODO
 Apollo should be able to do these things:
 - [ ] Music Player
   - [x] accept file, directory, or title to play music.
@@ -13,6 +14,9 @@ Apollo should be able to do these things:
     - [x] `stop`: stops to current song.
     - [x] `list`: lists all the song of the current playlist.
     - [x] `vol`: raises or lowers the volume followed by the value ex: `apollo vol [VALUE]` or `apollo vol [VALUE]`.
-  - [ ] introduce persitent data like: playlist, music lists, data of the last play song/playlist.
+  - [-] introduce persitent data like: playlist, music lists, data of the last play song/playlist.
+    - [x] config file in `$XDG_CONFIG_HOME/apollo/config.json`
+    - [ ] use sqlite and db file in `$XDG_DATA_HOME/share/apollo/apollo.db`
+    - [ ] introduce client command to set config value in config file. ex: `apollo config set music_dir [PATH]`
 - [ ] Make it a semi HTTP server and use REST to make control and serve its music to others over the network.
 - [ ] Introduce help command for other users.
