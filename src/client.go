@@ -6,7 +6,7 @@ import (
 )
 
 func handle_daemon(d *Daemon, cmd string, args []any) {
-	client, err := rpc.Dial(d.network, d.rpc_port)
+	client, err := rpc.Dial(d.network, d.config.RpcPort)
 	if err != nil {
 		fmt.Printf("Apollo daemon is not active...\n")
 		return

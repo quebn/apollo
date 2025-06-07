@@ -20,10 +20,10 @@ import (
 
 type MusicManager struct {
 	playlist []string
-	loop bool
 	playing bool
 	current int
 	paused bool
+	config *Config
 
 	// channels
 	toggle chan bool
@@ -34,14 +34,16 @@ type MusicManager struct {
 type Daemon struct {
 	context *daemon.Context
 	network string
-	rpc_port string
+	config *Config
+	// rpc_port string
 }
 
 
 func main() {
-	cmd, args := parse_args()
+	config := get_config()
+	cmd, args := parse_args(config)
 
-	dmon := Daemon{ network: "tcp", rpc_port: ":42069" }
+	dmon := Daemon{ network: "tcp", config: config }
 	if (cmd != "start") {
 		handle_daemon(&dmon, cmd, args)
 		return
@@ -74,12 +76,12 @@ func main() {
 	}
 
 	if len(playlist) == 0 {
-		playlist = get_songs_from_dir("./public")
+		playlist = get_songs_from_dir(config.MusicDir, config.MusicDir)
 	}
 
 	manager := MusicManager{
 		playlist: playlist,
-		loop: true,
+		config: config,
 		current: 0,
 		playing: false,
 		toggle: make(chan bool),
@@ -95,6 +97,7 @@ func main() {
 func (d *Daemon) Kill(args string, reply *string) error {
 	*reply = "Daemon Killed"
 	d.context.Release()
+	save_config(d.config)
 	os.Exit(0)
 	return nil
 }
@@ -201,7 +204,7 @@ func (m *MusicManager) Volume(args float64, reply *string) error {
 func start_rpc(d *Daemon, m *MusicManager) {
 	rpc.RegisterName("MusicManager", m)
 	rpc.RegisterName("Daemon", d)
-	listener, err := net.Listen(d.network, d.rpc_port)
+	listener, err := net.Listen(d.network, d.config.RpcPort)
 	if err != nil {
 		panic(err)
 	}
@@ -246,7 +249,7 @@ func (m *MusicManager) play_playlist() {
 		if m.playing {
 			fmt.Printf("Incrementing current index: %d -> %d\n", m.current, m.current+1)
 			m.current++
-			if m.loop && len(m.playlist) == m.current {
+			if m.config.Loop && len(m.playlist) == m.current {
 				m.current = 0
 			}
 		}
@@ -284,7 +287,7 @@ func (m *MusicManager) play_song(s beep.StreamSeekCloser, format beep.Format) {
 	}
 }
 
-func try_getpath(name string) ([]string, error) {
+func try_getsongs(name string, default_dir string) ([]string, error) {
 	files := []string{}
 	file, err := os.Stat(name)
 	if err != nil {
@@ -311,7 +314,7 @@ func try_getpath(name string) ([]string, error) {
 	// TODO: make this option use the database the get the name of the file and
 	// get its loc where the location is the primary key
 	fmt.Printf("Checking if title\n")
-	dirfs := os.DirFS("./public")
+	dirfs := os.DirFS(default_dir)
 	files, err = fs.Glob(dirfs, fmt.Sprintf("%s.ogg", name))
 	// TODO: support other formats (mp3, wav, and etc..)
 	if err != nil || files == nil {
@@ -322,7 +325,7 @@ func try_getpath(name string) ([]string, error) {
 }
 
 // playlist should be additional args
-func parse_args() (cmd string, args []any) {
+func parse_args(config *Config) (cmd string, args []any) {
 	if len(os.Args) == 1 {
 		return "start", args
 	}
@@ -351,7 +354,7 @@ func parse_args() (cmd string, args []any) {
 		fmt.Print("NOT IMPLEMENTED\n")
 		os.Exit(0)
 	default:
-		list, err := try_getpath(arg)
+		list, err := try_getsongs(arg, config.MusicDir)
 		if err != nil {
 			fmt.Fprintf(os.Stderr ,"ERROR: %s is not a valid song argument or command\n", arg)
 			fmt.Fprintf(os.Stderr ,"USAGE: apollo [COMMAND | FILEPATH | DIRPATH | TITLE] \n")
@@ -365,8 +368,8 @@ func parse_args() (cmd string, args []any) {
 	return "start", args
 }
 
-func get_songs_from_dir(dir string) []string {
-	songs, err := try_getpath(dir)
+func get_songs_from_dir(dir string, default_dir string) []string {
+	songs, err := try_getsongs(dir, default_dir)
 	if err != nil {
 		panic(err)
 	}
