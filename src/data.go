@@ -20,22 +20,23 @@ func get_config() *Config {
 	if err != nil {
 		panic(err)
 	}
-	defer file.Close()
 
 	var config Config
 	decoder := json.NewDecoder(file)
 	err = decoder.Decode(&config)
+	file.Close()
+
 	if err != nil {
 		set_default_config(&config)
+		save_config(&config)
 	}
 	return &config
 }
 
 func set_default_config(config *Config) {
-	fmt.Printf("Config file empty setting defaults\n")
-	// TODO: warn user to set their Music dir path. or maybe default to $HOME/Music/
+	fmt.Printf("Config not found setting default config\n")
 	*config = Config{
-		MusicDir: "",
+		MusicDir: filepath.Join(os.Getenv("HOME"), "Music"),
 		Loop: true,
 		RpcPort: ":42069",
 	}
@@ -77,7 +78,6 @@ func get_config_dirpath() string {
 		panic(err)
 	}
 	config_dirpath := filepath.Join(user_config, "apollo")
-	fmt.Printf("Config dirpath:%s\n", config_dirpath)
 	get_dir(config_dirpath)
 	return config_dirpath
 }

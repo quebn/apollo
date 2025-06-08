@@ -16,7 +16,6 @@ func handle_daemon(d *Daemon, cmd string, args []any) {
 	switch cmd {
 	case "play":
 		err = client.Call("MusicManager.Play", "", &reply)
-		fmt.Printf("Playing Song...\n")
 	case "stop":
 		err = client.Call("MusicManager.Stop", "", &reply)
 	case "toggle":

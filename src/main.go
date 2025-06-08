@@ -7,9 +7,10 @@ import (
 	"net"
 	"net/rpc"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
-	"strconv"
 
 	"github.com/gopxl/beep"
 	"github.com/gopxl/beep/effects"
@@ -76,7 +77,10 @@ func main() {
 	}
 
 	if len(playlist) == 0 {
-		playlist = get_songs_from_dir(config.MusicDir, config.MusicDir)
+		playlist, err = get_songs_from_dir(config.MusicDir)
+		if err != nil {
+			fmt.Printf("WARN: cannot get music files from %s\n", config.MusicDir)
+		}
 	}
 
 	manager := MusicManager{
@@ -104,7 +108,11 @@ func (d *Daemon) Kill(args string, reply *string) error {
 
 func (m *MusicManager) Play(args string, reply *string) error {
 	if !m.playing {
-		*reply = "Song is Playing...."
+		if len(m.playlist) == 0 {
+			*reply = "No songs in the playlist"
+			return nil
+		}
+		*reply = "Playing Song: " + m.playlist[m.current]
 		go m.play_playlist()
 	} else {
 		if m.paused == true {
@@ -290,36 +298,28 @@ func (m *MusicManager) play_song(s beep.StreamSeekCloser, format beep.Format) {
 func try_getsongs(name string, default_dir string) ([]string, error) {
 	files := []string{}
 	file, err := os.Stat(name)
-	if err != nil {
-		return files, err
+	if err != nil { // NOTE: search the titlename within the default music dir
+		// TODO: make this to get the matching title within the database
+		fmt.Printf("Checking if title\n")
+		dirfs := os.DirFS(default_dir)
+		files, err = fs.Glob(dirfs, fmt.Sprintf("%s.ogg", name))
+		// TODO: support other formats (mp3, wav, and etc..)
+		if err != nil || files == nil {
+			fmt.Printf("No file with name of %s found in %s!\n", name, default_dir)
+			return files, err
+		}
+		return files, nil
 	}
 	fmt.Printf("Checking if dir or file: %s.\n", name)
 	if !file.IsDir() {
 		files = append(files, name)
 		fmt.Printf("Found file %s\n", name)
-		return files, nil
 	} else {
-		dirfs := os.DirFS(strings.TrimRight(name, "/"))
-		// TODO: support other formats (mp3, wav, and etc..)
-		songs, err := fs.Glob(dirfs, "*.ogg")
-		if err == nil && len(songs) > 0 {
-			fmt.Printf("Found dir %s\n", name)
-			for _, song := range songs {
-				fmt.Printf("Adding to files: %s\n", fmt.Sprintf("%s/%s", name, song))
-				files = append(files, fmt.Sprintf("%s/%s", name, song))
-			}
-			return files, nil
+		dirpath := strings.TrimRight(name, "/")
+		files, err = get_songs_from_dir(dirpath)
+		if err != nil {
+			return files, err
 		}
-	}
-	// TODO: make this option use the database the get the name of the file and
-	// get its loc where the location is the primary key
-	fmt.Printf("Checking if title\n")
-	dirfs := os.DirFS(default_dir)
-	files, err = fs.Glob(dirfs, fmt.Sprintf("%s.ogg", name))
-	// TODO: support other formats (mp3, wav, and etc..)
-	if err != nil || files == nil {
-		fmt.Printf("No file with name of %s found!\n", name)
-		return files, errors.New("File with name of %s does not exist!\n")
 	}
 	return files, nil
 }
@@ -368,10 +368,25 @@ func parse_args(config *Config) (cmd string, args []any) {
 	return "start", args
 }
 
-func get_songs_from_dir(dir string, default_dir string) []string {
-	songs, err := try_getsongs(dir, default_dir)
+func get_songs_from_dir(dirpath string) ([]string, error) {
+	songs := []string{}
+	err := filepath.WalkDir(dirpath, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			dirfs := os.DirFS(path)
+			files, err := fs.Glob(dirfs, "*.ogg")
+			if err == nil && len(files) > 0 {
+				for _, song := range files {
+					songs = append(songs, fmt.Sprintf("%s/%s", path, song))
+				}
+			}
+		}
+		return nil
+	})
 	if err != nil {
-		panic(err)
+		return songs, err
 	}
-	return songs
+	return songs, nil
 }
