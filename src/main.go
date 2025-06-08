@@ -93,6 +93,9 @@ func main() {
 		done: make(chan bool),
 	}
 
+	db, err := get_db()
+	defer db.Close()
+
 	start_rpc(&dmon, &manager)
 	// start_musicplayer()
 	// start_http()

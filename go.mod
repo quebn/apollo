@@ -4,6 +4,7 @@ go 1.24.3
 
 require (
 	github.com/gopxl/beep v1.4.1
+	github.com/mattn/go-sqlite3 v1.14.28
 	github.com/sevlyar/go-daemon v0.1.6
 )
 
