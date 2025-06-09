@@ -1,5 +1,5 @@
 build/
-test/
+tests/
 
 *.ogg
 *.mp4

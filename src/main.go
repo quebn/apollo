@@ -36,7 +36,6 @@ type Daemon struct {
 	context *daemon.Context
 	network string
 	config *Config
-	// rpc_port string
 }
 
 
