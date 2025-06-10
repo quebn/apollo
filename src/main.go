@@ -128,6 +128,12 @@ func (m *MusicManager) Play(args string, reply *string) error {
 	return nil
 }
 
+func (m *MusicManager) Clean(args string, reply *string) error {
+	changes := clean_database(m.db)
+	*reply = fmt.Sprintf("Cleaned %d item(s) in the database", changes)
+	return nil
+}
+
 func (m *MusicManager) Stop(args string, reply *string) error {
 	if m.playing {
 		m.playing = false
@@ -374,7 +380,7 @@ func parse_args(config *Config) (cmd string, args []any) {
 	}
 	arg := os.Args[1]
 	switch arg {
-	case "play", "playlist", "toggle", "next", "prev", "stop", "list", "kill":
+	case "play", "playlist", "toggle", "next", "prev", "stop", "list", "kill", "clean":
 		return arg, args
 	case "sync":
 		cmd = arg

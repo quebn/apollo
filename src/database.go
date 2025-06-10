@@ -117,3 +117,37 @@ func register_dir(db *sql.DB, dirpath string) error {
 	fmt.Printf("Insert to db success with %d row(s) affected\n", count)
 	return nil
 }
+
+func clean_database(db *sql.DB) uint {
+	paths := []string{}
+	rows, err := db.Query("select path from musics;")
+	if err != nil {
+		fmt.Printf("Error getting musics from database:%v\n", err)
+		return 0
+	}
+	for rows.Next() {
+		var path string
+		err = rows.Scan(&path)
+		paths = append(paths, path)
+	}
+	invalid_paths := []string{}
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err == nil && !info.IsDir() {
+			continue
+		}
+		invalid_paths = append(invalid_paths, path)
+	}
+	values := strings.Join(invalid_paths, ",")
+	result, err := db.Exec(fmt.Sprintf("delete from musics where path in (%s);", values))
+	if err != nil {
+		fmt.Printf("Error deleting musics from database:%v\n", err)
+		return 0
+	}
+	rows_affected, err := result.RowsAffected()
+	if err != nil {
+		fmt.Printf("Error getting rows affected:%v\n", err)
+		return 0
+	}
+	return uint(rows_affected)
+}
