@@ -14,8 +14,8 @@ Apollo should be able to do these things:
     - [x] `stop`: stops to current song.
     - [x] `playlist`: lists all the song of the current playlist.
     - [x] `vol`: raises or lowers the volume followed by the value ex: `apollo vol [VALUE]` or `apollo vol [VALUE]`.
-    - [ ] `list`: list all songs in database.
-    - [ ] `sync`: scans the directory for music or the default music directory if none is provided.
+    - [x] `list`: list all songs in database.
+    - [x] `sync`: scans the directory for music or the default music directory if none is provided.
     - [ ] `add`: adds the path to the database taking the file name as the title.
     - [ ] `clean`: remove songs in database that has invalid path.
     - [ ] `del`: remove song from db with the specified title or path.
