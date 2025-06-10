@@ -16,8 +16,8 @@ Apollo should be able to do these things:
     - [x] `vol`: raises or lowers the volume followed by the value ex: `apollo vol [VALUE]` or `apollo vol [VALUE]`.
     - [x] `list`: list all songs in database.
     - [x] `sync`: scans the directory for music or the default music directory if none is provided.
+    - [x] `clean`: remove songs in database that has invalid path.
     - [ ] `add`: adds the path to the database taking the file name as the title.
-    - [ ] `clean`: remove songs in database that has invalid path.
     - [ ] `del`: remove song from db with the specified title or path.
   - [ ] introduce persitent data like: playlist, music lists, data of the last play song/playlist.
     - [x] config file in `$XDG_CONFIG_HOME/apollo/config.json`
