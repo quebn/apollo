@@ -12,11 +12,17 @@ Apollo should be able to do these things:
     - [x] `prev`: plays the previous song in the playlist.
     - [x] `toggle`: pause or resume the current song.
     - [x] `stop`: stops to current song.
-    - [x] `list`: lists all the song of the current playlist.
+    - [x] `playlist`: lists all the song of the current playlist.
     - [x] `vol`: raises or lowers the volume followed by the value ex: `apollo vol [VALUE]` or `apollo vol [VALUE]`.
-  - [-] introduce persitent data like: playlist, music lists, data of the last play song/playlist.
+    - [ ] `list`: list all songs in database.
+    - [ ] `sync`: scans the directory for music or the default music directory if none is provided.
+    - [ ] `add`: adds the path to the database taking the file name as the title.
+    - [ ] `clean`: remove songs in database that has invalid path.
+    - [ ] `del`: remove song from db with the specified title or path.
+  - [ ] introduce persitent data like: playlist, music lists, data of the last play song/playlist.
     - [x] config file in `$XDG_CONFIG_HOME/apollo/config.json`
-    - [-] use sqlite and db file in `$XDG_DATA_HOME/share/apollo/apollo.db` and implemted these functions:
+    - [ ] use sqlite and db file in `$XDG_DATA_HOME/share/apollo/apollo.db` and implemted these functions:
+      - [ ] sync function to scan and add all song from the default music directory to database.
       - [ ] add all the detected music in the default directory to the database, check if already added or not.
       - [ ] add a single song file not in database but is found in the default directory or within a path.
       - [ ] fetch the song that matches the title specified.
