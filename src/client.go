@@ -14,6 +14,12 @@ func handle_daemon(d *Daemon, cmd string, args []any) {
 
 	var reply string
 	switch cmd {
+	case "sync":
+		arg := ""
+		if len(args) > 0 {
+			arg = args[0].(string)
+		}
+		err = client.Call("MusicManager.Sync", arg, &reply)
 	case "play":
 		err = client.Call("MusicManager.Play", "", &reply)
 	case "stop":
@@ -24,6 +30,8 @@ func handle_daemon(d *Daemon, cmd string, args []any) {
 		err = client.Call("MusicManager.Next", "", &reply)
 	case "list":
 		err = client.Call("MusicManager.List", "", &reply)
+	case "playlist":
+		err = client.Call("MusicManager.Playlist", "", &reply)
 	case "prev":
 		err = client.Call("MusicManager.Previous", "", &reply)
 	case "vol":

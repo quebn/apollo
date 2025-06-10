@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -25,6 +26,7 @@ type MusicManager struct {
 	current int
 	paused bool
 	config *Config
+	db *sql.DB
 
 	// channels
 	toggle chan bool
@@ -92,8 +94,8 @@ func main() {
 		done: make(chan bool),
 	}
 
-	db, err := get_db()
-	defer db.Close()
+	manager.db, err = get_db()
+	defer manager.db.Close()
 
 	start_rpc(&dmon, &manager)
 	// start_musicplayer()
@@ -158,13 +160,16 @@ func (m *MusicManager) Previous(args string, reply *string) error {
 
 }
 
-func (m *MusicManager) List(args string, reply *string) error {
+func (m *MusicManager) Playlist(args string, reply *string) error {
 	if len(m.playlist) == 0 {
 		*reply = "No Songs in Playlist"
 	} else {
-		*reply = "Playlist Songs:\n"
-		for i,v := range m.playlist {
-			row := fmt.Sprintf("[%d]: %s\n", i, v)
+		*reply = "Playlist Songs\n"
+		for i, song := range m.playlist {
+			if i == m.current {
+				song = fmt.Sprintf("%s [Selected]", song)
+			}
+			row := fmt.Sprintf("%d. %s\n", i+1, song)
 			*reply = *reply + row
 		}
 	}
@@ -210,6 +215,38 @@ func (m *MusicManager) Volume(args float64, reply *string) error {
 	return nil
 }
 
+func (m *MusicManager) List(args string, reply *string) error {
+	songs := get_all_songs(m.db)
+	if len(songs) == 0 {
+		*reply = "No songs found in database"
+	} else {
+		*reply = "Listing Database Records"
+		count := 1
+		for _, song := range songs {
+			*reply = fmt.Sprintf("%s\n%d. %s", *reply, count, song)
+			count++
+		}
+	}
+	return nil
+}
+
+func (m *MusicManager) Sync(args string, reply *string) error {
+	if args == "" {
+		dirpath := m.config.MusicDir
+		file, err := os.Stat(dirpath)
+		if err != nil || !file.IsDir() {
+			return fmt.Errorf("Default Dir: %s is not a valid directory path: %v\n", dirpath,  err)
+		}
+		*reply = "Syncing database to directory"
+		return register_dir(m.db, dirpath)
+	}
+	info, err := os.Stat(args)
+	if err != nil || !info.IsDir() {
+		*reply = fmt.Sprintf("Invalid argument '%s': not a directory path\n", args)
+		return fmt.Errorf("%s\n", *reply)
+	}
+	return register_dir(m.db, args)
+}
 
 func start_rpc(d *Daemon, m *MusicManager) {
 	rpc.RegisterName("MusicManager", m)
@@ -326,6 +363,10 @@ func try_getsongs(name string, default_dir string) ([]string, error) {
 	return files, nil
 }
 
+func has_cmd_args() bool {
+	return len(os.Args) > 2
+}
+
 // playlist should be additional args
 func parse_args(config *Config) (cmd string, args []any) {
 	if len(os.Args) == 1 {
@@ -333,10 +374,24 @@ func parse_args(config *Config) (cmd string, args []any) {
 	}
 	arg := os.Args[1]
 	switch arg {
-	case "play", "toggle", "next", "prev", "stop", "list", "kill":
+	case "play", "playlist", "toggle", "next", "prev", "stop", "list", "kill":
 		return arg, args
+	case "sync":
+		cmd = arg
+		if has_cmd_args() {
+			arg := os.Args[2]
+			info, err := os.Stat(arg)
+			if err != nil || !info.IsDir() {
+				fmt.Fprintf(os.Stderr, "ERROR: invalid argument to sync '%s'\n", arg)
+				fmt.Fprintf(os.Stderr, "USAGE: apollo sync [DIRPATH]\n")
+				os.Exit(1)
+			}
+			args = make([]any, 1)
+			args[0] = arg
+		}
+		return cmd, args
 	case "vol":
-		if len(os.Args) < 3 {
+		if !has_cmd_args() {
 			fmt.Fprintf(os.Stderr ,"ERROR: volume argument value required\n")
 			fmt.Fprintf(os.Stderr ,"USAGE: apollo vol [VALUE] \n")
 			os.Exit(1)

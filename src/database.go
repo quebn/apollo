@@ -2,11 +2,12 @@ package main
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -31,22 +32,88 @@ func get_db() (*sql.DB, error) {
 	return db, nil
 }
 
-func register_song(db *sql.DB, title string, path string) error {
+func get_all_songs(db *sql.DB) []string {
+	musics := []string{}
+	result, err := db.Query("select title, path from musics;")
+	if err != nil {
+		log.Fatal(err)
+		return musics
+	}
+	for result.Next() {
+		var title string
+		var path string
+		err = result.Scan(&title, &path)
+		musics = append(musics, fmt.Sprintf("%s -> %s",title, path))
+	}
+	return musics
+}
+
+func register(db *sql.DB, title string, path string) error {
 	// check if title or path already exist.
 	row := db.QueryRow("select exists (select 1 from musics where title = ? or path = ?);", title, path)
 	var exists bool
 	err := row.Scan(&exists)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("ERROR on %s and path of %s: %v\n", title, path, err)
 	}
 	if exists {
-		return errors.New(fmt.Sprintf("Music with title of %s or path of %s already registered\n", title, path))
+		fmt.Printf("Music with title of %s or path of %s already registered\n", title, path)
+		return nil
 	}
 	result, err := db.Exec("insert into musics(title, path) values (? , ?);",  title, path)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("ERROR on inserting: %v\n", err)
 	}
 	rows_affected, err := result.RowsAffected()
 	fmt.Printf("Inserted to database with %d row(s) affected!\n", rows_affected)
+	return nil
+}
+
+func register_dir(db *sql.DB, dirpath string) error {
+	songs, err := get_songs_from_dir(dirpath)
+	if err != nil {
+		return fmt.Errorf("Error getting songs from %s: %v\n", dirpath, err)
+	}
+	rows, err := db.Query("select path from musics;")
+	if err != nil {
+		return fmt.Errorf("Error Querying songs from db: %v\n", err)
+	}
+	exists := []string{}
+	for rows.Next() {
+		var path string
+		err = rows.Scan(&path)
+		if err != nil {
+			continue
+		}
+		exists = append(exists, path)
+	}
+
+	new_songs := []string{}
+	for _, path := range songs {
+		if !slices.Contains(exists, path) {
+			info, err := os.Stat(path)
+			if err != nil {
+				continue
+			}
+			name := strings.TrimSuffix(info.Name(), ".ogg")
+			value := fmt.Sprintf("('%s', '%s')", name, path)
+			new_songs = append(new_songs, value)
+		}
+	}
+	if len(new_songs) == 0 {
+		fmt.Printf("No new values to insert\n")
+		return nil
+	}
+	values := strings.Join(new_songs, ",")
+	result, err := db.Exec(fmt.Sprintf("insert into musics(title, path) values %s;", values))
+	if err != nil {
+		return fmt.Errorf("Error: inserting %s to db: %v\n", values, err)
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		log.Fatal(err)
+		return nil
+	}
+	fmt.Printf("Insert to db success with %d row(s) affected\n", count)
 	return nil
 }
