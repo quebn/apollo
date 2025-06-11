@@ -22,7 +22,23 @@ func get_db() (*sql.DB, error) {
 		return db, err
 	}
 	query := `
-	create table if not exists musics (id integer not null primary key, title text not null, path text not null);
+	pragma foreign_keys = on;
+	create table if not exists musics (
+		id integer not null primary key,
+		title text not null,
+		path text not null
+	);
+	create table if not exists playlists (
+		id integer not null primary key,
+		name text not null
+	);
+	create table if not exists playlist_songs (
+		id integer not null,
+		playlist_id integer not null,
+		music_id integer not null,
+		foreign key (playlist_id) references playlists(id) on delete cascade,
+		foreign key (music_id) references musics(id) on delete cascade
+	);
 	`
 	_, err = db.Exec(query)
 	if err != nil {
@@ -32,8 +48,8 @@ func get_db() (*sql.DB, error) {
 	return db, nil
 }
 
-func get_all_songs(db *sql.DB) []string {
-	musics := []string{}
+func get_all_songs(db *sql.DB) []Music {
+	musics := []Music{}
 	result, err := db.Query("select title, path from musics;")
 	if err != nil {
 		log.Fatal(err)
@@ -43,7 +59,7 @@ func get_all_songs(db *sql.DB) []string {
 		var title string
 		var path string
 		err = result.Scan(&title, &path)
-		musics = append(musics, fmt.Sprintf("%s -> %s",title, path))
+		musics = append(musics, Music{title: title, path: path})
 	}
 	return musics
 }
@@ -89,7 +105,8 @@ func register_dir(db *sql.DB, dirpath string) error {
 	}
 
 	new_songs := []string{}
-	for _, path := range songs {
+	for _, song := range songs {
+		path := song.path
 		if !slices.Contains(exists, path) {
 			info, err := os.Stat(path)
 			if err != nil {
@@ -150,4 +167,33 @@ func clean_database(db *sql.DB) uint {
 		return 0
 	}
 	return uint(rows_affected)
+}
+
+func get_playlist(db *sql.DB, name string) (Playlist, error) {
+	playlist := Playlist{
+		name: "",
+		songs: []Music{},
+	}
+	query := fmt.Sprintf(`
+	select m.title, m.path
+	from musics m
+	join playlist_songs ps on m.id = ps.music_id
+	join playlist p on ps.playlist_id = p.id
+	where p.name = '%s';`, name)
+	rows, err := db.Query(query)
+	if err != nil {
+		fmt.Printf("Error getting musics from database:%v\n", err)
+		return playlist, err
+	}
+	playlist.name = name
+	for rows.Next() {
+		var title string
+		var path string
+		err = rows.Scan(&name, &path)
+		if err != nil {
+			continue
+		}
+		playlist.songs = append(playlist.songs, Music{title, path})
+	}
+	return playlist, nil
 }

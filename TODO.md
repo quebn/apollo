@@ -26,6 +26,6 @@ Apollo should be able to do these things:
       - [ ] add all the detected music in the default directory to the database, check if already added or not.
       - [ ] add a single song file not in database but is found in the default directory or within a path.
       - [ ] fetch the song that matches the title specified.
-    - [ ] introduce client command to set config value in config file. ex: `apollo config set music_dir [PATH]`
+    - [ ] introduce client command to set config value in config file. example: `apollo config set music_dir [PATH]`
 - [ ] Make it a semi HTTP server and use REST to make control and serve its music to others over the network.
 - [ ] Introduce help command for other users.

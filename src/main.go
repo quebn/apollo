@@ -20,8 +20,18 @@ import (
 	"github.com/sevlyar/go-daemon"
 )
 
+type Playlist struct {
+	name string
+	songs []Music
+}
+
+type Music struct {
+	title string
+	path string
+}
+
 type MusicManager struct {
-	playlist []string
+	playlist Playlist
 	playing bool
 	current int
 	paused bool
@@ -69,16 +79,19 @@ func main() {
 	}
 
 	defer dmon.context.Release()
-	playlist := []string{}
+	playlist := Playlist{
+		name: "Default",
+		songs: []Music{},
+	}
 
 	if args != nil || len(args) > 0 {
 		for _, v := range args {
-			playlist = append(playlist, v.(string))
+			playlist.songs = append(playlist.songs, v.(Music))
 		}
 	}
 
-	if len(playlist) == 0 {
-		playlist, err = get_songs_from_dir(config.MusicDir)
+	if playlist.length() == 0 {
+		playlist.songs, err = get_songs_from_dir(config.MusicDir)
 		if err != nil {
 			fmt.Printf("WARN: cannot get music files from %s\n", config.MusicDir)
 		}
@@ -102,6 +115,14 @@ func main() {
 	// start_http()
 }
 
+func (p *Playlist) length() int {
+	return len(p.songs)
+}
+
+func (m *MusicManager) current_song() *Music {
+	return &m.playlist.songs[m.current]
+}
+
 func (d *Daemon) Kill(args string, reply *string) error {
 	*reply = "Daemon Killed"
 	d.context.Release()
@@ -112,11 +133,11 @@ func (d *Daemon) Kill(args string, reply *string) error {
 
 func (m *MusicManager) Play(args string, reply *string) error {
 	if !m.playing {
-		if len(m.playlist) == 0 {
+		if m.playlist.length() == 0 {
 			*reply = "No songs in the playlist"
 			return nil
 		}
-		*reply = "Playing Song: " + m.playlist[m.current]
+		*reply = "Playing Song: " + m.current_song().title
 		go m.play_playlist()
 	} else {
 		if m.paused == true {
@@ -147,11 +168,11 @@ func (m *MusicManager) Stop(args string, reply *string) error {
 }
 
 func (m *MusicManager) Previous(args string, reply *string) error {
-	if len(m.playlist) == 0 {
+	if m.playlist.length() == 0 {
 		return errors.New("No songs in playlist")
 	}
 	if m.current == 0 {
-		m.current = len(m.playlist) - 1
+		m.current = m.playlist.length() - 1
 	} else {
 		m.current--
 	}
@@ -167,15 +188,16 @@ func (m *MusicManager) Previous(args string, reply *string) error {
 }
 
 func (m *MusicManager) Playlist(args string, reply *string) error {
-	if len(m.playlist) == 0 {
+	if m.playlist.length() == 0 {
 		*reply = "No Songs in Playlist"
 	} else {
-		*reply = "Playlist Songs\n"
-		for i, song := range m.playlist {
+		*reply = fmt.Sprintf("Playlist Songs: '%s'\n", m.playlist.name)
+		for i, song := range m.playlist.songs {
+			title := song.title
 			if i == m.current {
-				song = fmt.Sprintf("%s [Selected]", song)
+				title = title + " <- [Selected]"
 			}
-			row := fmt.Sprintf("%d. %s\n", i+1, song)
+			row := fmt.Sprintf("%d. %s\n", i+1, title)
 			*reply = *reply + row
 		}
 	}
@@ -183,7 +205,7 @@ func (m *MusicManager) Playlist(args string, reply *string) error {
 }
 
 func (m *MusicManager) Next(args string, reply *string) error {
-	if len(m.playlist) == 0 {
+	if m.playlist.length() == 0 {
 		return errors.New("No songs in playlist")
 	}
 	if m.playing {
@@ -193,7 +215,7 @@ func (m *MusicManager) Next(args string, reply *string) error {
 		*reply = "Going next"
 	} else{
 		m.current++
-		if len(m.playlist) == m.current {
+		if m.playlist.length() == m.current {
 			m.current = 0
 		}
 		*reply = fmt.Sprintf("Next with index: %d\b", m.current)
@@ -229,7 +251,7 @@ func (m *MusicManager) List(args string, reply *string) error {
 		*reply = "Listing Database Records"
 		count := 1
 		for _, song := range songs {
-			*reply = fmt.Sprintf("%s\n%d. %s", *reply, count, song)
+			*reply = fmt.Sprintf("%s\n%d. %s", *reply, count, song.title)
 			count++
 		}
 	}
@@ -273,15 +295,15 @@ func start_rpc(d *Daemon, m *MusicManager) {
 
 // TODO: support other formats
 func (m *MusicManager) play_playlist() {
-	if len(m.playlist) == 0 {
+	if m.playlist.length() == 0 {
 		fmt.Printf("No songs in playlist\n")
 		return
 	}
 	m.paused = false
 	m.playing = true
 	fmt.Printf("Playlist Playing...!\n")
-	for m.playing && m.current < len(m.playlist) {
-		file_path := m.playlist[m.current]
+	for m.playing && m.current < m.playlist.length() {
+		file_path := m.current_song().path
 
 		file, err := os.Open(file_path)
 		if err != nil {
@@ -302,7 +324,7 @@ func (m *MusicManager) play_playlist() {
 		if m.playing {
 			fmt.Printf("Incrementing current index: %d -> %d\n", m.current, m.current+1)
 			m.current++
-			if m.config.Loop && len(m.playlist) == m.current {
+			if m.config.Loop && m.playlist.length() == m.current {
 				m.current = 0
 			}
 		}
@@ -340,33 +362,34 @@ func (m *MusicManager) play_song(s beep.StreamSeekCloser, format beep.Format) {
 	}
 }
 
-func try_getsongs(name string, default_dir string) ([]string, error) {
-	files := []string{}
+func try_getsongs(name string, default_dir string) ([]Music, error) {
+	songs := []Music{}
 	file, err := os.Stat(name)
 	if err != nil { // NOTE: search the titlename within the default music dir
-		// TODO: make this to get the matching title within the database
+		// IMPORTANT: make this to get the matching title within the database
 		fmt.Printf("Checking if title\n")
 		dirfs := os.DirFS(default_dir)
-		files, err = fs.Glob(dirfs, fmt.Sprintf("%s.ogg", name))
-		// TODO: support other formats (mp3, wav, and etc..)
+		files, err := fs.Glob(dirfs, fmt.Sprintf("%s.ogg", name))
+		// IMPORTANT: support other formats (mp3, wav, and etc..)
 		if err != nil || files == nil {
 			fmt.Printf("No file with name of %s found in %s!\n", name, default_dir)
-			return files, err
+			return songs, err
 		}
-		return files, nil
+		return songs, nil
 	}
 	fmt.Printf("Checking if dir or file: %s.\n", name)
 	if !file.IsDir() {
-		files = append(files, name)
+		title := strings.TrimSuffix(file.Name(), ".ogg")
+		songs = append(songs, Music{title: title, path: name})
 		fmt.Printf("Found file %s\n", name)
 	} else {
 		dirpath := strings.TrimRight(name, "/")
-		files, err = get_songs_from_dir(dirpath)
+		songs, err = get_songs_from_dir(dirpath)
 		if err != nil {
-			return files, err
+			return songs, err
 		}
 	}
-	return files, nil
+	return songs, nil
 }
 
 func has_cmd_args() bool {
@@ -417,22 +440,22 @@ func parse_args(config *Config) (cmd string, args []any) {
 		fmt.Print("NOT IMPLEMENTED\n")
 		os.Exit(0)
 	default:
-		list, err := try_getsongs(arg, config.MusicDir)
+		songs, err := try_getsongs(arg, config.MusicDir)
 		if err != nil {
 			fmt.Fprintf(os.Stderr ,"ERROR: %s is not a valid song argument or command\n", arg)
 			fmt.Fprintf(os.Stderr ,"USAGE: apollo [COMMAND | FILEPATH | DIRPATH | TITLE] \n")
 			os.Exit(1)
 		}
-		args = make([]any, len(list))
-		for i, v := range list {
+		args = make([]any, len(songs))
+		for i, v := range songs {
 			args[i] = v
 		}
 	}
 	return "start", args
 }
 
-func get_songs_from_dir(dirpath string) ([]string, error) {
-	songs := []string{}
+func get_songs_from_dir(dirpath string) ([]Music, error) {
+	songs := []Music{}
 	err := filepath.WalkDir(dirpath, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -442,7 +465,8 @@ func get_songs_from_dir(dirpath string) ([]string, error) {
 			files, err := fs.Glob(dirfs, "*.ogg")
 			if err == nil && len(files) > 0 {
 				for _, song := range files {
-					songs = append(songs, fmt.Sprintf("%s/%s", path, song))
+					path := fmt.Sprintf("%s/%s", path, song)
+					songs = append(songs, Music{ title:song, path:path })
 				}
 			}
 		}
