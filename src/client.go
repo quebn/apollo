@@ -79,11 +79,11 @@ func handle_offline(cmd string, args []any,  config Config) {
 		if len(args) > 0 {
 			arg = args[0].(string)
 		}
-		reply, err = sync(db, arg, config.MusicDir)
+		reply, err = sync_musics(db, arg, config.MusicDir)
 	case "list":
-		reply = list(db)
+		reply = list_musics(db)
 	case "clean":
-		changes := clean_database(db)
+		changes := clean_musics(db)
 		reply = fmt.Sprintf("Cleaned %d item(s) in the database", changes)
 	case "create":
 		name := args[0].(string)

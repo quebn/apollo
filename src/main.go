@@ -156,7 +156,7 @@ func (m *MusicManager) Play(args string, reply *string) error {
 }
 
 func (m *MusicManager) Clean(args string, reply *string) error {
-	changes := clean_database(m.db)
+	changes := clean_musics(m.db)
 	*reply = fmt.Sprintf("Cleaned %d item(s) in the database", changes)
 	return nil
 }
@@ -250,13 +250,13 @@ func (m *MusicManager) Volume(args float64, reply *string) error {
 }
 
 func (m *MusicManager) List(args string, reply *string) error {
-	*reply = list(m.db)
+	*reply = list_musics(m.db)
 	return nil
 }
 
 func (m *MusicManager) Sync(args string, reply *string) error {
 	var err error
-	*reply, err = sync(m.db, args, m.config.MusicDir)
+	*reply, err = sync_musics(m.db, args, m.config.MusicDir)
 	return err
 }
 
@@ -485,3 +485,4 @@ func get_songs_from_dir(dirpath string) ([]Music, error) {
 	}
 	return songs, nil
 }
+

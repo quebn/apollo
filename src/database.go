@@ -137,7 +137,7 @@ func register_dir(db *sql.DB, dirpath string) error {
 	return nil
 }
 
-func clean_database(db *sql.DB) uint {
+func clean_musics(db *sql.DB) uint {
 	paths := []string{}
 	rows, err := db.Query("select path from musics;")
 	if err != nil {
@@ -210,7 +210,7 @@ func get_song(db *sql.DB ,title string) (Music, error) {
 	return song, nil
 }
 
-func sync(db *sql.DB, dirpath string, fallback string) (msg string, err error)  {
+func sync_musics(db *sql.DB, dirpath string, fallback string) (msg string, err error)  {
 	msg = ""
 	if dirpath == "" {
 		file, err := os.Stat(fallback)
@@ -229,7 +229,7 @@ func sync(db *sql.DB, dirpath string, fallback string) (msg string, err error)  
 	return msg, register_dir(db, dirpath)
 }
 
-func list(db *sql.DB) string {
+func list_musics(db *sql.DB) string {
 	msg := ""
 	songs := get_all_songs(db)
 	if len(songs) == 0 {
@@ -259,6 +259,21 @@ func create_playlist(db *sql.DB, name string) (string, error) {
 	}
 	rows_affected, err := result.RowsAffected()
 	return fmt.Sprintf("Inserted to database with %d row(s) affected!\n", rows_affected), nil
+}
+
+func delete_playlist(db *sql.DB, name string) (string, error) {
+	result, err := db.Exec("delete from playlists where name = ?;", name)
+	if err != nil {
+		return fmt.Sprintf("Error deleting musics from database:%v\n", err), err
+	}
+	rows_affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Sprintf("Error getting rows affected:%v\n", err), err
+	}
+	if rows_affected == 0 {
+		return fmt.Sprintf("No playlist with '%s' in database!\n", name), nil
+	}
+	return fmt.Sprintf("Successfully deleted playlist '%s'!\n", name), nil
 }
 
 func list_playlist(db *sql.DB) (string, error) {
