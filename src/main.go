@@ -138,17 +138,34 @@ func (d *Daemon) Kill(args string, reply *string) error {
 }
 
 func (m *MusicManager) Play(args string, reply *string) error {
+	if args != "" && args != m.playlist.name {
+		playlist, err := get_playlist(m.db, args)
+		if err != nil {
+			fmt.Printf("Error: getting playlist from db: %v\n", err)
+			return fmt.Errorf("Error: getting playlist from db: %v\n", err)
+		}
+		// stops current playlist
+		if m.playing {
+			m.playing = false
+			m.toggle <-true
+			m.done <-true
+		}
+		// resets playlist index and sets the new playlist
+		*reply = fmt.Sprintf("Switching playlist to '%s'\n", playlist.name)
+		m.current = 0
+		m.playlist = playlist
+	}
 	if !m.playing {
 		if m.playlist.length() == 0 {
-			*reply = "No songs in the playlist"
+			*reply = fmt.Sprintf("%sCan't play '%s', has 0 songs", *reply, m.playlist.name)
 			return nil
 		}
-		*reply = "Playing Song: " + m.current_song().title
+		*reply = *reply + "Playing Song: " + m.current_song().title
 		go m.play_playlist()
 	} else {
 		if m.paused == true {
 			m.toggle <-false
-			*reply = "Already Playing song and unpausing instead...."
+			*reply = fmt.Sprintf("Unpausing '%s'", m.playlist.name)
 		}
 		*reply = "Already Playing song...."
 	}
@@ -195,9 +212,9 @@ func (m *MusicManager) Previous(args string, reply *string) error {
 
 func (m *MusicManager) Playlist(args string, reply *string) error {
 	if m.playlist.length() == 0 {
-		*reply = "No Songs in Playlist"
+		*reply = fmt.Sprintf("Playlist: %s\nNo songs", m.playlist.name)
 	} else {
-		*reply = fmt.Sprintf("Playlist Songs: '%s'\n", m.playlist.name)
+		*reply = fmt.Sprintf("Playlist: '%s'\n", m.playlist.name)
 		for i, song := range m.playlist.songs {
 			title := song.title
 			if i == m.current {
@@ -263,6 +280,12 @@ func (m *MusicManager) Sync(args string, reply *string) error {
 func (m *MusicManager) Create(args string, reply *string) error {
 	var err error
 	*reply, err = create_playlist(m.db, args)
+	return err
+}
+
+func (m *MusicManager) Delete(args string, reply *string) error {
+	var err error
+	*reply, err = delete_playlist(m.db, args)
 	return err
 }
 
@@ -400,13 +423,21 @@ func parse_args() (cmd string, args []any) {
 	}
 	arg := os.Args[1]
 	switch arg {
-	case "play", "playlist", "toggle", "next", "prev", "stop", "list", "kill", "clean", "playlists":
+	case "playlist", "toggle", "next", "prev", "stop", "list", "kill", "clean", "playlists":
 		return arg, args
-	case "create":
+	case "play":
+		cmd := arg
+		if has_cmd_args() {
+			arg = os.Args[2]
+			args = make([]any, 1)
+			args[0] = arg
+		}
+		return cmd, args
+	case "create", "delete":
 		cmd := arg
 		if !has_cmd_args() {
-			fmt.Fprintf(os.Stderr, "ERROR: missing argument to create\n")
-			fmt.Fprintf(os.Stderr, "USAGE: apollo creae [PLAYLIST NAME]\n")
+			fmt.Fprintf(os.Stderr, "ERROR: missing argument to %s\n", cmd)
+			fmt.Fprintf(os.Stderr, "USAGE: apollo %s [PLAYLIST NAME]\n", cmd)
 			os.Exit(1)
 		}
 		arg = os.Args[2]
@@ -485,4 +516,3 @@ func get_songs_from_dir(dirpath string) ([]Music, error) {
 	}
 	return songs, nil
 }
-

@@ -66,27 +66,6 @@ func get_all_songs(db *sql.DB) []Music {
 	return musics
 }
 
-func register(db *sql.DB, title string, path string) error {
-	// check if title or path already exist.
-	row := db.QueryRow("select exists (select 1 from musics where title = ? or path = ?);", title, path)
-	var exists bool
-	err := row.Scan(&exists)
-	if err != nil {
-		return fmt.Errorf("ERROR on %s and path of %s: %v\n", title, path, err)
-	}
-	if exists {
-		fmt.Printf("Music with title of %s or path of %s already registered\n", title, path)
-		return nil
-	}
-	result, err := db.Exec("insert into musics(title, path) values (? , ?);",  title, path)
-	if err != nil {
-		return fmt.Errorf("ERROR on inserting: %v\n", err)
-	}
-	rows_affected, err := result.RowsAffected()
-	fmt.Printf("Inserted to database with %d row(s) affected!\n", rows_affected)
-	return nil
-}
-
 func register_dir(db *sql.DB, dirpath string) error {
 	songs, err := get_songs_from_dir(dirpath)
 	if err != nil {
@@ -126,7 +105,7 @@ func register_dir(db *sql.DB, dirpath string) error {
 	values := strings.Join(new_songs, ",")
 	result, err := db.Exec(fmt.Sprintf("insert into musics(title, path) values %s;", values))
 	if err != nil {
-		return fmt.Errorf("Error: inserting %s to db: %v\n", values, err)
+		return fmt.Errorf("Error: inserting %s to db: %v", values, err)
 	}
 	count, err := result.RowsAffected()
 	if err != nil {
@@ -180,7 +159,7 @@ func get_playlist(db *sql.DB, name string) (Playlist, error) {
 	select m.*
 	from musics m
 	join playlist_songs ps on m.id = ps.music_id
-	join playlist p on ps.playlist_id = p.id
+	join playlists p on ps.playlist_id = p.id
 	where p.name = '%s';`, name)
 	rows, err := db.Query(query)
 	if err != nil {
@@ -199,13 +178,25 @@ func get_playlist(db *sql.DB, name string) (Playlist, error) {
 	return playlist, nil
 }
 
+func exists(db *sql.DB, table string, where string) bool {
+	query := fmt.Sprintf("select exists (select 1 from %s where %s);", table, where)
+	row := db.QueryRow(query)
+	var exists bool
+	err := row.Scan(&exists)
+	if err != nil {
+		fmt.Printf("Error checking on %s table where %s: %v\n", table, where, err)
+		return false
+	}
+	return exists
+}
+
 func get_song(db *sql.DB ,title string) (Music, error) {
 	song := Music{}
 	query := fmt.Sprintf("select * from musics where title = '%s' limit 1;", title)
 	row := db.QueryRow(query)
 	err := row.Scan(&song.id, &song.title, &song.path)
 	if err != nil {
-		return song, fmt.Errorf("Cannot get song from db: %v\n", err)
+		return song, fmt.Errorf("Cannot get song from db: %v", err)
 	}
 	return song, nil
 }
@@ -215,17 +206,17 @@ func sync_musics(db *sql.DB, dirpath string, fallback string) (msg string, err e
 	if dirpath == "" {
 		file, err := os.Stat(fallback)
 		if err != nil || !file.IsDir() {
-			return msg, fmt.Errorf("Default Dir: %s is not a valid directory path: %v\n", fallback,  err)
+			return msg, fmt.Errorf("Default Dir: %s is not a valid directory path: %v", fallback,  err)
 		}
 		msg = "Syncing database to default directory"
 		return msg, register_dir(db, fallback)
 	}
 	info, err := os.Stat(dirpath)
 	if err != nil || !info.IsDir() {
-		msg = fmt.Sprintf("Invalid argument '%s': not a directory path\n", dirpath)
-		return msg, fmt.Errorf("%s\n", msg)
+		msg = fmt.Sprintf("Invalid argument '%s': not a directory path", dirpath)
+		return msg, fmt.Errorf("%s", msg)
 	}
-	msg = fmt.Sprintf("Syncing database to '%s'\n", dirpath)
+	msg = fmt.Sprintf("Syncing database to '%s'", dirpath)
 	return msg, register_dir(db, dirpath)
 }
 
@@ -244,36 +235,29 @@ func list_musics(db *sql.DB) string {
 }
 
 func create_playlist(db *sql.DB, name string) (string, error) {
-	row := db.QueryRow("select exists (select 1 from playlists where name = ?);", name)
-	var exists bool
-	err := row.Scan(&exists)
+	if exists(db, "playlists", fmt.Sprintf("name = %s", name)) {
+		return fmt.Sprintf("Playlist: '%s' already exists", name), nil
+	}
+	_, err := db.Exec("insert into playlists(name) values (?);", name)
 	if err != nil {
-		return fmt.Sprintf("Error checking if %s exist in db: %v\n", name, err), err
+		return fmt.Sprintf("ERROR on inserting: %v", err), err
 	}
-	if exists {
-		return fmt.Sprintf("Playlist: '%s' already exists\n", name), nil
-	}
-	result, err := db.Exec("insert into playlists(name) values (?);", name)
-	if err != nil {
-		return fmt.Sprintf("ERROR on inserting: %v\n", err), err
-	}
-	rows_affected, err := result.RowsAffected()
-	return fmt.Sprintf("Inserted to database with %d row(s) affected!\n", rows_affected), nil
+	return fmt.Sprintf("Successfully created playlist '%s'!", name), nil
 }
 
 func delete_playlist(db *sql.DB, name string) (string, error) {
 	result, err := db.Exec("delete from playlists where name = ?;", name)
 	if err != nil {
-		return fmt.Sprintf("Error deleting musics from database:%v\n", err), err
+		return fmt.Sprintf("Error deleting musics from database:%v", err), err
 	}
 	rows_affected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Sprintf("Error getting rows affected:%v\n", err), err
+		return fmt.Sprintf("Error getting rows affected:%v", err), err
 	}
 	if rows_affected == 0 {
-		return fmt.Sprintf("No playlist with '%s' in database!\n", name), nil
+		return fmt.Sprintf("No playlist with '%s' in database!", name), nil
 	}
-	return fmt.Sprintf("Successfully deleted playlist '%s'!\n", name), nil
+	return fmt.Sprintf("Successfully deleted playlist '%s'!", name), nil
 }
 
 func list_playlist(db *sql.DB) (string, error) {
@@ -286,7 +270,7 @@ func list_playlist(db *sql.DB) (string, error) {
 	`
 	result, err := db.Query(query)
 	if err != nil {
-		return msg, fmt.Errorf("ERROR: query error of playlists %v\n", err)
+		return msg, fmt.Errorf("ERROR: query error of playlists %v", err)
 	}
 	for result.Next() {
 		var id int

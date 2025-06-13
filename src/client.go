@@ -21,7 +21,21 @@ func handle_daemon(d *Daemon, cmd string, args []any) {
 		}
 		err = client.Call("MusicManager.Sync", dirpath, &reply)
 	case "play":
-		err = client.Call("MusicManager.Play", "", &reply)
+		name := ""
+		if len(args) > 0 {
+			name = args[0].(string)
+			db, err := get_db()
+			if err != nil {
+				fmt.Printf("Apollo: error getting db: %v!\n", err)
+				return
+			}
+			defer db.Close()
+			if !exists(db, "playlists", fmt.Sprintf("name = '%s'", name)) {
+				fmt.Printf("Apollo: playlist '%s' does not exist!\n", name)
+				return
+			}
+		}
+		err = client.Call("MusicManager.Play", name, &reply)
 	case "stop":
 		err = client.Call("MusicManager.Stop", "", &reply)
 	case "toggle":
@@ -42,6 +56,9 @@ func handle_daemon(d *Daemon, cmd string, args []any) {
 	case "create":
 		name := args[0].(string)
 		err = client.Call("MusicManager.Create", name, &reply)
+	case "delete":
+		name := args[0].(string)
+		err = client.Call("MusicManager.Delete", name, &reply)
 	case "playlists":
 		err = client.Call("MusicManager.Playlists", "", &reply)
 	case "add":
@@ -51,8 +68,9 @@ func handle_daemon(d *Daemon, cmd string, args []any) {
 		}
 		err = client.Call("MusicManager.AddMusic", path, &reply)
 	case "kill":
-
 		err = client.Call("Daemon.Kill", "", &reply)
+		fmt.Printf("Apollo Daemon killed\n")
+		return
 	default:
 		fmt.Printf("No Handles implemented for command: %s\n", cmd)
 		return
@@ -88,11 +106,13 @@ func handle_offline(cmd string, args []any,  config Config) {
 	case "create":
 		name := args[0].(string)
 		reply, err = create_playlist(db, name)
+	case "delete":
+		name := args[0].(string)
+		reply, err = delete_playlist(db, name)
 	case "playlists":
 		reply, err = list_playlist(db)
 	default:
-		fmt.Printf("NOT: HANDLED COMMAND '%s'\n", cmd)
-		reply = "daemon is not active..."
+		reply = "Daemon is not active..."
 	}
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
