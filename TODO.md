@@ -6,7 +6,7 @@ Apollo should be able to do these things:
   - [x] daemonize the program
   - [x] use rpc for a server client like functionality for local control (NOTE: not implementing grpc because i only want the control to be local).
     - [x] `[FILEPATH|DIRPATH|TITLE]`: start daemon if not started and play the song(s) depending on the arguments.
-    - [x] `play`: start playing the current song.
+    - [x] `play`: start playing the current song of current playlist. if playlist name is provided as arg, switch and play it.
     - [x] `kill`: kills the program daemon if there is one.
     - [x] `next`: plays the next song in the playlist.
     - [x] `prev`: plays the previous song in the playlist.
@@ -19,7 +19,7 @@ Apollo should be able to do these things:
     - [x] `list`: list all songs in database.
     - [x] `playlists`: lists all the playlist and their song count.
     - [x] `create`: create new playlist.
-    - [ ] `delete`: delete existing playlist.
+    - [x] `delete`: delete existing playlist.
     - [ ] `add`: add song to the current playlist (must not be the all playlist).
     - [ ] `remove`: song with the specified path and use the file name as the title of the song
   - [x] introduce persitent data like: playlist, music lists, data of the last play song/playlist.
