@@ -33,7 +33,7 @@ func get_db() (*sql.DB, error) {
 		name text not null
 	);
 	create table if not exists playlist_songs (
-		id integer not null,
+		id integer not null primary key,
 		playlist_id integer not null,
 		music_id integer not null,
 		foreign key (playlist_id) references playlists(id) on delete cascade,
@@ -169,11 +169,11 @@ func get_playlist(db *sql.DB, name string) (Playlist, error) {
 	from musics m
 	join playlist_songs ps on m.id = ps.music_id
 	join playlists p on ps.playlist_id = p.id
-	where p.id = %d;`, playlist.id)
+	where ps.playlist_id = %d;`, playlist.id)
 	rows, err := db.Query(query)
 	if err != nil {
 		fmt.Printf("Error getting musics from database:%v\n", err)
-		return playlist, err
+		return playlist, fmt.Errorf("Error getting musics from database:%v\n", err)
 	}
 
 	for rows.Next() {
@@ -310,14 +310,14 @@ func add_songs(db *sql.DB, playlist_id int, song_ids []int) ([]Music, error) {
 
 	ins_ids := []string{}
 	query := fmt.Sprintf(`
-	insert into playlist_songs(playlist_id, music_id)
-	select %d, id
-	from musics
-	where id in (%s) returning music_id;
+	insert into playlist_songs (playlist_id, music_id)
+	select %d, m.id
+	from musics m
+	where m.id in (%s) returning music_id;
 	`, playlist_id, strings.Join(ids, ","))
 
-	fmt.Printf("Logging query: %s\n", query)
 	rows, err := db.Query(query)
+	fmt.Printf("Logging insert query: %s\n", query)
 	if err != nil {
 		fmt.Printf("Error Inserting songs to playlist: %v ", err)
 		return []Music{}, fmt.Errorf("Error Inserting songs to playlist: %v ", err)
@@ -329,7 +329,13 @@ func add_songs(db *sql.DB, playlist_id int, song_ids []int) ([]Music, error) {
 			fmt.Printf("Error Scanning: %v ", err)
 			continue
 		}
+		fmt.Printf("Inserted song with id: %d\n", song_id)
 		ins_ids = append(ins_ids, fmt.Sprintf("%d", song_id))
+	}
+
+	if len(ins_ids) == 0{
+		// TODO: maybe if there is not inserted return empty
+		fmt.Printf("Inserted ids length is %d\n", len(ins_ids))
 	}
 
 	values := strings.Join(ins_ids, ",")
