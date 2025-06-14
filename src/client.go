@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/rpc"
+	"strconv"
 )
 
 func handle_daemon(d *Daemon, cmd string, args []any) {
@@ -62,11 +63,22 @@ func handle_daemon(d *Daemon, cmd string, args []any) {
 	case "playlists":
 		err = client.Call("MusicManager.Playlists", "", &reply)
 	case "add":
-		path := ""
-		if len(args) > 0 {
-			path = args[0].(string)
+		ids := []int{}
+		for _, arg := range args {
+			id, err := strconv.Atoi(arg.(string))
+			if err != nil {
+				fmt.Printf("Error Converting: %v ", err)
+				continue
+			}
+			fmt.Printf("adding id: %d\n", id)
+			ids = append(ids, id)
 		}
-		err = client.Call("MusicManager.AddMusic", path, &reply)
+		fmt.Printf("Adding music to playlist\n")
+		if len(ids) > 0 {
+			err = client.Call("MusicManager.Add", ids, &reply)
+		} else {
+			err = fmt.Errorf("Cannot add to playlist args is empty")
+		}
 	case "kill":
 		err = client.Call("Daemon.Kill", "", &reply)
 		fmt.Printf("Apollo Daemon killed\n")
@@ -77,6 +89,7 @@ func handle_daemon(d *Daemon, cmd string, args []any) {
 	}
 
 	if err != nil {
+		fmt.Printf("Apollo Error: %v\n", err)
 		return
 	}
 	fmt.Printf("Apollo: %s\n", reply)

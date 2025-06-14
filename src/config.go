@@ -11,6 +11,7 @@ type Config struct {
 	MusicDir string `json:"music_dir"`
 	Loop bool `json:"loop"`
 	RpcPort string `json:"rpc_port"`
+	// maybe add the default playlist?
 }
 
 func get_config() *Config {

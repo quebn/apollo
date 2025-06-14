@@ -54,7 +54,7 @@ type Daemon struct {
 
 
 func main() {
-	cmd, args := parse_args()
+	cmd, args := parse_cmds()
 
 	config := get_config()
 	dmon := Daemon{ network: "tcp", config: config }
@@ -123,6 +123,12 @@ func main() {
 
 func (p *Playlist) length() int {
 	return len(p.songs)
+}
+
+func (p *Playlist) add_songs(songs []Music) {
+	for _, song := range songs {
+		p.songs = append(p.songs, song)
+	}
 }
 
 func (m *MusicManager) current_song() *Music {
@@ -212,9 +218,9 @@ func (m *MusicManager) Previous(args string, reply *string) error {
 
 func (m *MusicManager) Playlist(args string, reply *string) error {
 	if m.playlist.length() == 0 {
-		*reply = fmt.Sprintf("Playlist: %s\nNo songs", m.playlist.name)
+		*reply = fmt.Sprintf("Playlist: [%d] %s\nNo songs", m.playlist.id ,m.playlist.name)
 	} else {
-		*reply = fmt.Sprintf("Playlist: '%s'\n", m.playlist.name)
+		*reply = fmt.Sprintf("Playlist: [%d] %s\n", m.playlist.id, m.playlist.name)
 		for i, song := range m.playlist.songs {
 			title := song.title
 			if i == m.current {
@@ -292,6 +298,18 @@ func (m *MusicManager) Delete(args string, reply *string) error {
 func (m *MusicManager) Playlists(args string, reply *string) error {
 	var err error
 	*reply, err = list_playlist(m.db)
+	return err
+}
+
+func (m *MusicManager) Add(args []int, reply *string) error {
+	var err error
+	songs, err := add_songs(m.db ,m.playlist.id, args)
+	if err != nil {
+		*reply = fmt.Sprintf("Error: adding songs to playlist:%v", err)
+		return fmt.Errorf("Error: adding songs to playlist:%v", err)
+	}
+	m.playlist.add_songs(songs)
+	*reply = fmt.Sprintf("Added %d songs to '%s' playlist", len(songs), m.playlist.name)
 	return err
 }
 
@@ -413,11 +431,11 @@ func try_getsongs(name string) ([]Music, error) {
 	return songs, nil
 }
 
-func has_cmd_args() bool {
+func has_args() bool {
 	return len(os.Args) > 2
 }
 
-func parse_args() (cmd string, args []any) {
+func parse_cmds() (cmd string, args []any) {
 	if len(os.Args) == 1 {
 		return "start", args
 	}
@@ -425,9 +443,22 @@ func parse_args() (cmd string, args []any) {
 	switch arg {
 	case "playlist", "toggle", "next", "prev", "stop", "list", "kill", "clean", "playlists":
 		return arg, args
+	// TODO: Implement case
+	case "add":
+		cmd := arg
+		if !has_args() {
+			fmt.Fprintf(os.Stderr, "ERROR: missing argument to add \n")
+			fmt.Fprintf(os.Stderr, "USAGE: apollo add [SONG IDS...]\n")
+			os.Exit(1)
+		}
+		args := []any{}
+		for _,v := range os.Args[2:] {
+			args = append(args, v)
+		}
+		return cmd, args
 	case "play":
 		cmd := arg
-		if has_cmd_args() {
+		if has_args() {
 			arg = os.Args[2]
 			args = make([]any, 1)
 			args[0] = arg
@@ -435,7 +466,7 @@ func parse_args() (cmd string, args []any) {
 		return cmd, args
 	case "create", "delete":
 		cmd := arg
-		if !has_cmd_args() {
+		if !has_args() {
 			fmt.Fprintf(os.Stderr, "ERROR: missing argument to %s\n", cmd)
 			fmt.Fprintf(os.Stderr, "USAGE: apollo %s [PLAYLIST NAME]\n", cmd)
 			os.Exit(1)
@@ -446,7 +477,7 @@ func parse_args() (cmd string, args []any) {
 		return cmd, args
 	case "sync":
 		cmd = arg
-		if has_cmd_args() {
+		if has_args() {
 			arg := os.Args[2]
 			info, err := os.Stat(arg)
 			if err != nil || !info.IsDir() {
@@ -459,7 +490,7 @@ func parse_args() (cmd string, args []any) {
 		}
 		return cmd, args
 	case "vol":
-		if !has_cmd_args() {
+		if !has_args() {
 			fmt.Fprintf(os.Stderr ,"ERROR: volume argument value required\n")
 			fmt.Fprintf(os.Stderr ,"USAGE: apollo vol [VALUE] \n")
 			os.Exit(1)
