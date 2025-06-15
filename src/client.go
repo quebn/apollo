@@ -70,10 +70,8 @@ func handle_daemon(d *Daemon, cmd string, args []any) {
 				fmt.Printf("Error Converting: %v ", err)
 				continue
 			}
-			fmt.Printf("adding id: %d\n", id)
 			ids = append(ids, id)
 		}
-		fmt.Printf("Adding music to playlist\n")
 		if len(ids) > 0 {
 			err = client.Call("MusicManager.Add", ids, &reply)
 		} else {

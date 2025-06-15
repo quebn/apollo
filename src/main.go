@@ -306,11 +306,15 @@ func (m *MusicManager) Add(args []int, reply *string) error {
 	songs, err := add_songs(m.db ,m.playlist.id, args)
 	if err != nil {
 		*reply = fmt.Sprintf("Error: adding songs to playlist:%v", err)
-		return fmt.Errorf("Error: adding songs to playlist:%v", err)
+		return fmt.Errorf("%s", *reply)
+	}
+	if len(songs) == 0 {
+		*reply = fmt.Sprintf("Songs provided are already in the playlist")
+		return nil
 	}
 	m.playlist.add_songs(songs)
 	*reply = fmt.Sprintf("Added %d songs to '%s' playlist", len(songs), m.playlist.name)
-	return err
+	return nil
 }
 
 func start_rpc(d *Daemon, m *MusicManager) {

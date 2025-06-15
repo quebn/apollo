@@ -169,7 +169,7 @@ func get_playlist(db *sql.DB, name string) (Playlist, error) {
 	from musics m
 	join playlist_songs ps on m.id = ps.music_id
 	join playlists p on ps.playlist_id = p.id
-	where ps.playlist_id = %d;`, playlist.id)
+	where p.id = %d;`, playlist.id)
 	rows, err := db.Query(query)
 	if err != nil {
 		fmt.Printf("Error getting musics from database:%v\n", err)
@@ -178,10 +178,11 @@ func get_playlist(db *sql.DB, name string) (Playlist, error) {
 
 	for rows.Next() {
 		song := Music{}
-		err = rows.Scan(&song.id ,&song.id, &song.path)
+		err = rows.Scan(&song.id ,&song.title, &song.path)
 		if err != nil {
 			continue
 		}
+		playlist.songs = append(playlist.songs, song)
 	}
 	return playlist, nil
 }
@@ -298,47 +299,75 @@ func list_playlist(db *sql.DB) (string, error) {
 
 func add_songs(db *sql.DB, playlist_id int, song_ids []int) ([]Music, error) {
 	if playlist_id == 0 {
-		return []Music{}, fmt.Errorf("Cannot add to playlist, id provided is %d\n", playlist_id)
+		return []Music{}, fmt.Errorf("Cannot add to playlist, id provided is %d ", playlist_id)
 	}
-	ids := []string{}
+	arg_ids := []string{}
 	for _, song_id := range song_ids {
 		id := fmt.Sprintf("%d", song_id)
-		if !slices.Contains(ids, id) {
-			ids = append(ids, id)
+		if !slices.Contains(arg_ids, id) {
+			arg_ids = append(arg_ids, id)
 		}
 	}
 
-	ins_ids := []string{}
+	existing_ids := []string{}
 	query := fmt.Sprintf(`
-	insert into playlist_songs (playlist_id, music_id)
-	select %d, m.id
-	from musics m
-	where m.id in (%s) returning music_id;
-	`, playlist_id, strings.Join(ids, ","))
+		select music_id from playlist_songs where playlist_id = ? and music_id in (%s);
+		`, strings.Join(arg_ids, ","))
 
-	rows, err := db.Query(query)
+	rows, err := db.Query(query, playlist_id)
+	if err != nil {
+		fmt.Printf("Error Inserting songs to playlist: %v ", err)
+		return []Music{}, fmt.Errorf("Error Inserting songs to playlist: %v ", err)
+	}
+	for rows.Next() {
+		var music_id int
+		err := rows.Scan(&music_id)
+		if err != nil {
+			fmt.Printf("Error Scanning: %v ", err)
+			continue
+		}
+		fmt.Printf("Inserted song with id: %d\n", music_id)
+		existing_ids = append(existing_ids, fmt.Sprintf("%d", music_id))
+	}
+
+	new_ids := []string{}
+	for _, arg_id := range arg_ids {
+		if !slices.Contains(existing_ids, arg_id) {
+			new_ids = append(new_ids, arg_id)
+		}
+
+	}
+
+	if len(new_ids) == 0{
+		return []Music{}, nil
+	}
+
+	inserted_ids := []string{}
+	query = fmt.Sprintf(`
+		insert into playlist_songs (playlist_id, music_id)
+		select %d, m.id
+		from musics m
+		where m.id in (%s) returning music_id;
+		`, playlist_id, strings.Join(new_ids, ","))
+
+	rows, err = db.Query(query)
 	fmt.Printf("Logging insert query: %s\n", query)
 	if err != nil {
 		fmt.Printf("Error Inserting songs to playlist: %v ", err)
 		return []Music{}, fmt.Errorf("Error Inserting songs to playlist: %v ", err)
 	}
 	for rows.Next() {
-		var song_id int
-		err := rows.Scan(&song_id)
+		var music_id int
+		err := rows.Scan(&music_id)
 		if err != nil {
 			fmt.Printf("Error Scanning: %v ", err)
 			continue
 		}
-		fmt.Printf("Inserted song with id: %d\n", song_id)
-		ins_ids = append(ins_ids, fmt.Sprintf("%d", song_id))
+		fmt.Printf("Inserted song with id: %d\n", music_id)
+		inserted_ids = append(inserted_ids, fmt.Sprintf("%d", music_id))
 	}
 
-	if len(ins_ids) == 0{
-		// TODO: maybe if there is not inserted return empty
-		fmt.Printf("Inserted ids length is %d\n", len(ins_ids))
-	}
-
-	values := strings.Join(ins_ids, ",")
+	values := strings.Join(inserted_ids, ",")
 	fmt.Printf("Inserted this values in db:%s\n", values)
 	query = fmt.Sprintf("select * from musics where id in (%s);", values)
 	rows, err = db.Query(query)
