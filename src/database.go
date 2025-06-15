@@ -311,7 +311,10 @@ func add_songs(db *sql.DB, playlist_id int, song_ids []int) ([]Music, error) {
 
 	existing_ids := []string{}
 	query := fmt.Sprintf(`
-		select music_id from playlist_songs where playlist_id = ? and music_id in (%s);
+		select music_id
+		from playlist_songs
+		where playlist_id = ?
+		and music_id in (%s);
 		`, strings.Join(arg_ids, ","))
 
 	rows, err := db.Query(query, playlist_id)
@@ -385,4 +388,41 @@ func add_songs(db *sql.DB, playlist_id int, song_ids []int) ([]Music, error) {
 		songs = append(songs, song)
 	}
 	return songs, nil
+}
+
+func remove_songs(db *sql.DB, playlist_id int, song_ids []int) ([]int, error) {
+	deleted_songs := []int{}
+
+	if playlist_id == 0 {
+		return deleted_songs, fmt.Errorf("Cannot delete to playlist, id provided is %d ", playlist_id)
+	}
+	arg_ids := []string{}
+	for _, song_id := range song_ids {
+		id := fmt.Sprintf("%d", song_id)
+		if !slices.Contains(arg_ids, id) {
+			arg_ids = append(arg_ids, id)
+		}
+	}
+
+	query := fmt.Sprintf(`
+		delete from playlist_songs
+		where playlist_id = ?
+		and music_id in (%s)
+		returning music_id;
+	`, strings.Join(arg_ids, ","))
+	rows, err := db.Query(query, playlist_id)
+	if err != nil {
+		return deleted_songs, fmt.Errorf("Error deleting music from playlist: %v", err)
+	}
+	for rows.Next() {
+		var music_id int
+		err := rows.Scan(&music_id)
+		if err != nil {
+			continue
+		}
+		if !slices.Contains(deleted_songs, music_id) {
+			deleted_songs = append(deleted_songs, music_id)
+		}
+	}
+	return deleted_songs, nil
 }

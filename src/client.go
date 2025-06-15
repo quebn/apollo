@@ -62,6 +62,21 @@ func handle_daemon(d *Daemon, cmd string, args []any) {
 		err = client.Call("MusicManager.Delete", name, &reply)
 	case "playlists":
 		err = client.Call("MusicManager.Playlists", "", &reply)
+	case "remove":
+		ids := []int{}
+		for _, arg := range args {
+			id, err := strconv.Atoi(arg.(string))
+			if err != nil {
+				fmt.Printf("Error Converting: %v ", err)
+				continue
+			}
+			ids = append(ids, id)
+		}
+		if len(ids) > 0 {
+			err = client.Call("MusicManager.Remove", ids, &reply)
+		} else {
+			reply = "Cannot remove to playlist args is empty"
+		}
 	case "add":
 		ids := []int{}
 		for _, arg := range args {
@@ -75,7 +90,7 @@ func handle_daemon(d *Daemon, cmd string, args []any) {
 		if len(ids) > 0 {
 			err = client.Call("MusicManager.Add", ids, &reply)
 		} else {
-			err = fmt.Errorf("Cannot add to playlist args is empty")
+			reply = "Cannot add to playlist args is empty"
 		}
 	case "kill":
 		err = client.Call("Daemon.Kill", "", &reply)

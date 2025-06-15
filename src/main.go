@@ -9,6 +9,7 @@ import (
 	"net/rpc"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -125,10 +126,20 @@ func (p *Playlist) length() int {
 	return len(p.songs)
 }
 
-func (p *Playlist) add_songs(songs []Music) {
+func (p *Playlist) add(songs []Music) {
 	for _, song := range songs {
 		p.songs = append(p.songs, song)
 	}
+}
+
+func (p *Playlist) remove(song_ids []int) {
+	new_songs := []Music{}
+	for _, song := range p.songs {
+		if !slices.Contains(song_ids, song.id) {
+			new_songs = append(new_songs, song)
+		}
+	}
+	p.songs = new_songs
 }
 
 func (m *MusicManager) current_song() *Music {
@@ -200,7 +211,7 @@ func (m *MusicManager) Previous(args string, reply *string) error {
 	if m.playlist.length() == 0 {
 		return errors.New("No songs in playlist")
 	}
-	if m.current == 0 {
+	if m.current == 0 || m.current >= m.playlist.length() {
 		m.current = m.playlist.length() - 1
 	} else {
 		m.current--
@@ -244,10 +255,10 @@ func (m *MusicManager) Next(args string, reply *string) error {
 		*reply = "Going next"
 	} else{
 		m.current++
-		if m.playlist.length() == m.current {
+		if m.playlist.length() <= m.current {
 			m.current = 0
 		}
-		*reply = fmt.Sprintf("Next with index: %d\b", m.current)
+		*reply = fmt.Sprintf("Next with index: %d", m.current)
 	}
 	return nil
 }
@@ -312,8 +323,25 @@ func (m *MusicManager) Add(args []int, reply *string) error {
 		*reply = fmt.Sprintf("Songs provided are already in the playlist")
 		return nil
 	}
-	m.playlist.add_songs(songs)
-	*reply = fmt.Sprintf("Added %d songs to '%s' playlist", len(songs), m.playlist.name)
+	m.playlist.add(songs)
+	*reply = fmt.Sprintf("Added %d song(s) to '%s' playlist", len(songs), m.playlist.name)
+	return nil
+}
+
+func (m *MusicManager) Remove(args []int, reply *string) error {
+	// TODO: if playing, stop
+	var err error
+	song_ids, err := remove_songs(m.db ,m.playlist.id, args)
+	if err != nil {
+		*reply = fmt.Sprintf("Error: removing songs to playlist:%v", err)
+		return fmt.Errorf("%s", *reply)
+	}
+	if len(song_ids) == 0 {
+		*reply = fmt.Sprintf("Songs provided are not in the playlist")
+		return nil
+	}
+	m.playlist.remove(song_ids)
+	*reply = fmt.Sprintf("Deleted %d song(s) from '%s' playlist", len(song_ids), m.playlist.name)
 	return nil
 }
 
@@ -365,7 +393,7 @@ func (m *MusicManager) play_playlist() {
 		if m.playing {
 			fmt.Printf("Incrementing current index: %d -> %d\n", m.current, m.current+1)
 			m.current++
-			if m.config.Loop && m.playlist.length() == m.current {
+			if m.config.Loop && m.playlist.length() <= m.current {
 				m.current = 0
 			}
 		}
@@ -447,12 +475,11 @@ func parse_cmds() (cmd string, args []any) {
 	switch arg {
 	case "playlist", "toggle", "next", "prev", "stop", "list", "kill", "clean", "playlists":
 		return arg, args
-	// TODO: Implement case
-	case "add":
+	case "add", "remove":
 		cmd := arg
 		if !has_args() {
-			fmt.Fprintf(os.Stderr, "ERROR: missing argument to add \n")
-			fmt.Fprintf(os.Stderr, "USAGE: apollo add [SONG IDS...]\n")
+			fmt.Fprintf(os.Stderr, "ERROR: missing argument to %s \n", cmd)
+			fmt.Fprintf(os.Stderr, "USAGE: apollo %s [SONG IDS...]\n", cmd)
 			os.Exit(1)
 		}
 		args := []any{}

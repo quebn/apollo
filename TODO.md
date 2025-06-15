@@ -1,6 +1,6 @@
 # TODO
 Apollo should be able to do these things:
-- [ ] Music Player
+- [x] Music Player
   - [x] accept file, directory, or title to play music.
   - [x] autoplay the next song in the playlist and print the title.
   - [x] daemonize the program
@@ -20,15 +20,15 @@ Apollo should be able to do these things:
     - [x] `playlists`: lists all the playlist and their song count.
     - [x] `create`: create new playlist.
     - [x] `delete`: delete existing playlist.
-    - [ ] `add`: add song to the current playlist (must not be the all playlist).
-    - [ ] `remove`: song with the specified path and use the file name as the title of the song
+    - [x] `add`: add song to the current playlist (must not be the all playlist).
+    - [x] `remove`: song with the specified path and use the file name as the title of the song
   - [x] introduce persitent data like: playlist, music lists, data of the last play song/playlist.
     - [x] config file in `$XDG_CONFIG_HOME/apollo/config.json`
-    - [ ] use sqlite and db file in `$XDG_DATA_HOME/share/apollo/apollo.db` and implemted these functions:
-      - [ ] sync function to scan and add all song from the default music directory to database.
-      - [ ] add all the detected music in the default directory to the database, check if already added or not.
+    - [x] use sqlite and db file in `$XDG_DATA_HOME/share/apollo/apollo.db` and implemted these functions:
+      - [x] sync function to scan and add all song from the default music directory to database.
+      - [x] add all the detected music in the default directory to the database, check if already added or not.
       - [ ] add a single song file not in database but is found in the default directory or within a path.
-      - [ ] fetch the song that matches the title specified.
+      - [x] fetch the song that matches the title specified.
     - [ ] introduce client command to set config value in config file. example: `apollo config set music_dir [PATH]`
 - [ ] Make it a semi HTTP server and use REST to make control and serve its music to others over the network.
 - [ ] Introduce help command for other users.
